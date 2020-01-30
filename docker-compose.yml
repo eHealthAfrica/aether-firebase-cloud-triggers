@@ -1,0 +1,31 @@
+# ------------------------------------------------------------------------------
+# Firebase Emulator for Tests local and CI
+# ------------------------------------------------------------------------------
+
+version: "2.1"
+
+services:
+
+  # -------------------------------------
+  # Firebase Eumulator
+  # -------------------------------------
+
+  emu:
+    image: ehealthafrica/firebase-emulator:latest
+    container_name: firebase_emulator
+    volumes:
+      # Change the Firebase configuration by mounting a local firebase.json
+      - ./firebase.json:/app/firebase.json
+    ports:
+      - 5001:5001
+      - 9000:9000
+      - 8080:8080
+      - 8085:8085
+      - 5000:5000
+    entrypoint:
+      ["firebase", "emulators:start"]
+
+  test-library:
+    build: .
+    entrypoint:
+      "/test/entrypoint.sh"
