@@ -19,7 +19,7 @@ show_help() {
     """
 }
 
-PYTEST="pytest --cov-report term-missing"
+PYTEST="pytest --cov-report term-missing --cov=app --cov-append -p no:cacheprovider"
 # --cov=app --cov-append -p no:cacheprovider
 
 test_flake8() {

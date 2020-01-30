@@ -18,7 +18,9 @@
 # specific language governing permissions and limitations
 # under the License.
 
-from . import *  # noqa
+import pytest
+
+from fixtures import *  # noqa
 
 
 @pytest.mark

@@ -18,8 +18,32 @@
 # specific language governing permissions and limitations
 # under the License.
 
-from . import *  # noqa
+from .fixtures import *  # noqa
+# from .aether_functions import *  # noqa
 
 
 def test__fixture(simple_payload):
     assert(True)
+
+
+def test__event_reverse():
+    evt = EventType.WRITE
+    db = DatabaseType.CFS
+    descriptor = event_from_type(db, evt)
+    t_db, t_evt = info_from_event(descriptor)
+    assert(evt is t_evt)
+    assert(db is t_db)
+
+
+def test__contextualize(simple_entity):
+    gen = simple_entity(10)
+    evt = EventType.WRITE
+    db = DatabaseType.CFS
+    for e in gen:
+        res = contextualize(e, evt, db)
+        assert(
+            res.get('context').get('eventType') == event_from_type(db, evt)
+        )
+        assert(
+            res.get('data').get('body') == e.payload['body']
+        )

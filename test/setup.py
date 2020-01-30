@@ -25,6 +25,5 @@ setup(
     author='eHealth Africa',
     author_email='aether@ehealthafrica.org',
     license='Apache2 License',
-
     packages=find_packages(),
 )
