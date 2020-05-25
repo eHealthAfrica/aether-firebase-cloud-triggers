@@ -1,4 +1,4 @@
-# Copyright (C) 2018 by eHealth Africa : http://www.eHealthAfrica.org
+# Copyright (C) 2020 by eHealth Africa : http://www.eHealthAfrica.org
 #
 # See the NOTICE file distributed with this work for additional information
 # regarding copyright ownership.
@@ -18,15 +18,18 @@
 
 import signal
 
+
 class Timeout:
     def __init__(self, length=1, caller='Timeout'):
         self.length = length
         self.caller = caller
+
     def __enter__(self):
         signal.signal(signal.SIGALRM, self.handle_timeout)
         signal.alarm(self.length)
+
     def __exit__(self, type, value, traceback):
         signal.alarm(0)
+
     def handle_timeout(self, signum, frame):
         raise TimeoutError(self.caller)
-    
