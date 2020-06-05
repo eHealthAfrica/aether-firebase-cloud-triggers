@@ -18,14 +18,19 @@
 # specific language governing permissions and limitations
 # under the License.
 
+import pytest
+
 from .fixtures import *  # noqa
 # from .aether_functions import *  # noqa
+from .app.fb_utils import halve_iterable
 
 
+@pytest.mark.unit
 def test__fixture(simple_payload):
     assert(True)
 
 
+@pytest.mark.unit
 def test__event_reverse():
     evt = EventType.WRITE
     db = DatabaseType.CFS
@@ -35,6 +40,7 @@ def test__event_reverse():
     assert(db is t_db)
 
 
+@pytest.mark.unit
 def test__contextualize(simple_entity):
     gen = simple_entity(10)
     evt = EventType.WRITE
@@ -47,3 +53,11 @@ def test__contextualize(simple_entity):
         assert(
             res.get('data').get('body') == e.payload['body']
         )
+
+
+@pytest.mark.unit
+def test__halve_iterable():
+    a = [1, 2, 3, 4, 5]
+    b, c = halve_iterable(a)
+    assert(len(b) == 3)
+    assert(len(c) == 2)

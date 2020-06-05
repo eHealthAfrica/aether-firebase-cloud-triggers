@@ -17,22 +17,27 @@
 # under the License.
 
 from collections import namedtuple
+from dataclasses import dataclass
 from enum import Enum
 from multiprocessing import Queue
+import json
 from typing import (
     Any,
     Dict,
     List,
-    Mapping,
-    NamedTuple,
-    Union
+    Mapping
 )
 
-from firebase_admin.db import reference as realtime
-from firebase_admin.firestore import client as cfs
+from firebase_admin.db import reference as rtdb_reference
+from firebase_admin.firestore import client as cfs_client
 from google.cloud import firestore
+import spavro.schema
+import spavro.io
 
-_logger = settings.get_logger('Utils')
+from aether.python.avro import tools as avro_tools
+from aet.logger import get_logger
+
+LOG = get_logger('Utils')
 
 
 class CacheType(Enum):
@@ -41,25 +46,74 @@ class CacheType(Enum):
     NONE = 3
 
 
-_NORMAL_CACHE = 'exm_failed_submissions'
-_QUARANTINE_CACHE = 'exm_quarantine_submissions'
+_SYNC_QUEUE = '_sync_queue'  # TODO environ.get('QUEUE_PATH')
+_NORMAL_CACHE = '_failed'
+_QUARANTINE_CACHE = '_quarantined'
 _FAILED_CACHES = [
     (CacheType.NORMAL, _NORMAL_CACHE),
     (CacheType.QUARANTINE, _QUARANTINE_CACHE),
 ]
 
-Constants = namedtuple(
-    'Constants',
-    (
-        'mappings',
-        'mappingsets',
-        'schemas',
-        'schemadecorators',
-        'submissions',
-        'schema_id',
-        'schema_definition',
-    )
-)
+
+@dataclass
+class InputSet:
+    name: str
+    docs: Queue
+    options: Dict
+    schema: Dict
+
+
+class InputManager:
+
+    def __init__(self, rtdb_instance: 'RTDBTarget'):
+        self.rtdb = rtdb_instance
+        self.schemas = {}
+
+    def _read_all(self):
+        return self.rtdb.reference(_SYNC_QUEUE).get(shallow=False)
+
+    def get_inputs(self) -> List[InputSet]:
+        _inputs = self._read_all()
+        for _type, obj in _inputs.items():
+            schema = obj.get('schema')
+            self.schemas[_type] = spavro.schema.parse(schema)
+            yield InputSet(
+                name=_type,
+                docs=self._prepare_docs(_type, obj.get('documents').items()),
+                options=obj.get('options'),
+                schema=schema
+            )
+
+    def _prepare_docs(self, _type, _docs):
+        good_objects = self._filter_good_objects(_type, _docs, Queue())
+        for _id, item in _docs:
+            # delete from sync cache
+            self._mark_copied(_type, _id)
+        return good_objects
+
+    def _filter_good_objects(self, _type, docs, queue) -> Queue:
+        passed = []
+        failed = []
+        for _id, _doc in docs:
+            doc = json.loads(_doc)
+            if spavro.io.validate(self.schemas[_type], doc):
+                passed.append(doc)
+            else:
+                failed.append(doc)
+                result = avro_tools.AvroValidator(
+                    schema=self.schemas[_type],
+                    datum=doc
+                )
+                for error in result.errors:
+                    err_msg = avro_tools.format_validation_error(error)
+                    LOG.error(f'Schema validation failed on type {_type}: {err_msg}')
+        cache_objects(_type, passed, queue, self.rtdb)
+        quarantine(_type, failed, self.rtdb)
+        return queue
+
+    def _mark_copied(self, _type, _id):
+        path = f'{_SYNC_QUEUE}/{_type}/documents/{_id}'
+        self.rtdb.reference(path).delete()
 
 
 # RTDB io
@@ -70,131 +124,179 @@ class RTDB(object):
         self.app = app
 
     def reference(self, path):
-        return realtime(path, app=self.app)
+        return rtdb_reference(path, app=self.app)
 
 
 # CFS io
 
-def Firestore(app) -> firestore.Client:
-    # we use firebase_admin.firestore which takes the app info and returns firestore.Client
-    return cfs(app)
+class Firestore(object):
+    cfs: firestore.Client = None
+
+    def __init__(self, app=None, instance=None):
+        if app:
+            self.cfs = cfs_client(app)
+        elif instance:
+            self.cfs = instance
+
+    def read(self, path, _id=None):
+        if _id:
+            return self.ref(path, _id).get().to_dict()
+        else:
+            return [i.to_dict() for i in self.ref(path, _id).get()]
+
+    def ref(self, path, _id=None):
+        if _id:
+            path = f'{path}/{_id}'
+            return self.cfs.document(path)
+        else:
+            return self.cfs.collection(path)
+
+    def list(self, path):
+        return [i.id for i in self.ref(path).list_documents()]
+
+    def write(self, path, value, _id=None):
+        return self.ref(path, _id).set(value)
+
+    def remove(self, path, _id=None):
+        return self.ref(path, _id).delete()
 
 
-def cfs_ref(cfs, path, doc_id=None):
-    if doc_id:
-        path = f'{path}/{doc_id}'
-        return cfs.document(path)
-    else:
-        return cfs.collection(path)
+class RTDBTarget(object):
 
-
-def read_cfs(cfs, path, doc_id=None):
-    if doc_id:
-        return cfs_ref(cfs, path, doc_id).get().to_dict()
-    else:
-        return [i.to_dict() for i in cfs_ref(cfs, path, doc_id).get()]
-
-
-def write_cfs(cfs, path, value, doc_id=None):
-    return cfs_ref(cfs, path, doc_id).set(value)
-
-
-def reference_path(fn):
-    def wrap(*args, **kwargs):
-        base_path = args[0].base_path
-        if 'path' not in kwargs:
-            raise RuntimeError('path not specified for RTDB operation')
-        kwargs['path'] = f'{base_path}/' + kwargs['path']
-        return fn(*args, **kwargs)
-    return wrap
-
-
-class RTDB_Target(object):
-    '''
-    add(obj, partial_path (_NORMAL_CACHE))
-    get(_id, partial_path (_NORMAL_CACHE))
-    remove(_id, _NORMAL_CACHE)
-    exists(_id, partial_path (_NORMAL_CACHE))
-    list(_NORMAL_CACHE)
-    '''
     def __init__(self, base_path: str = None, rtdb: RTDB = None):
-        self.path = base_path
+        self.base_path = base_path
         self.rtdb = rtdb
 
     def add(self, _id, path, msg):
-        path = f'{self.base_path}/{path}/{_id}'
-        ref = self.rtdb.reference(path)
-        ref.set(msg)
+        path = f'{path}/{_id}'
+        ref = self.reference(path)
+        ref.set(json.dumps(msg))
 
     def get(self, _id, path):
-        path = f'{self.base_path}/{path}/{_id}'
-        _ref = self.rtdb.reference(path)
-        return _ref.get()
+        path = f'{path}/{_id}'
+        _ref = self.reference(path)
+        try:
+            return json.loads(_ref.get())
+        except Exception as err:
+            raise err
+            return _ref.get()
+
+    def reference(self, path):
+        path = f'{self.base_path}/{path}'
+        return self._raw_reference(path)
+
+    def _raw_reference(self, path):
+        return self.rtdb.reference(path)
 
     def remove(self, _id, path=None):
-        path = f'{self.base_path}/{path}/{_id}'
-        _ref = self.rtdb.reference(path)
+        path = f'{path}/{_id}'
+        _ref = self.reference(path)
         return _ref.delete()
 
     def list(self, path=None):
-        path = f'{self.base_path}/{path}'
-        _ref = self.rtdb.reference(path)
-        return [i for i in _ref.get(shallow=True)]
+        _ref = self.reference(path)
+        res = _ref.get(shallow=True)
+        if not res:
+            return []
+        return [i for i in res]
 
 
-def cache_objects(objects: List[Any], queue: Queue, rtdb_instance=None):
-    _logger.debug(f'Caching {len(objects)} objects')
+# generic cache operations
 
+def _put(
+    _type: str,
+    objects: List[Any],
+    queue: Queue,
+    rtdb_instance: RTDBTarget = None,
+    _cache=_NORMAL_CACHE
+):
+    LOG.debug(f'Caching {len(objects)} objects')
+    path = f'{_cache}/{_type}'
     try:
         for obj in objects:
-            rtdb_instance.add(obj['id'], _NORMAL_CACHE, obj)
+            rtdb_instance.add(obj['id'], path, obj)
             queue.put(obj)
     except Exception as err:  # pragma: no cover
-        _logger.critical(f'Could not save failed objects to RTDB {str(err)}')
+        LOG.critical(f'Could not save failed objects to RTDB {str(err)}')
 
 
-def get_failed_objects(queue: Queue, rtdb_instance=None) -> dict:
-    failed = rtdb_instance.list(_NORMAL_CACHE)
+def _get(_type: str, queue: Queue, rtdb_instance: RTDBTarget = None, _cache=_NORMAL_CACHE) -> dict:
+    path = f'{_cache}/{_type}'
+    failed = rtdb_instance.list(path)
     for _id in failed:
-        res = rtdb_instance.get(_id, _NORMAL_CACHE)
+        res = rtdb_instance.get(_id, path)
         if res:
             queue.put(res)
         else:
-            _logger.warning(f'Could not fetch object {_id}')
+            LOG.warning(f'Could not fetch object {_id}')
 
 
-def remove_from_cache(obj: Mapping[Any, Any], rtdb_instance=None):
+def _remove(
+    _type: str,
+    obj: Mapping[Any, Any],
+    rtdb_instance: RTDBTarget = None,
+    _cache=_NORMAL_CACHE
+):
+    path = f'{_cache}/{_type}'
     _id = obj['id']
     try:
-        rtdb_instance.remove(_id, _NORMAL_CACHE)
+        rtdb_instance.remove(_id, path)
         return True
     except Exception as err:
-        _logger.error(err)
+        LOG.error(err)
         raise err
 
 
-def quarantine(objects: List[Any], rtdb_instance=None):
-    _logger.warning(f'Quarantine {len(objects)} objects')
-
-    try:
-        for obj in objects:
-            rtdb_instance.add(obj['id'], _QUARANTINE_CACHE, obj)
-    except Exception as err:  # pragma: no cover
-        _logger.critical(f'Could not save quarantine objects RTDB {str(err)}')
+def _list_types(
+    _cache=_NORMAL_CACHE,
+    rtdb_instance: RTDBTarget = None,
+):
+    return rtdb_instance.list(_cache)
 
 
-def remove_from_quarantine(obj: Mapping[Any, Any], rtdb_instance=None):
-    _id = obj['id']
-    try:
-        rtdb_instance.remove(_id, _QUARANTINE_CACHE)
-        return True
-    except Exception as err:
-        _logger.error(err)
-        raise err
+# normal cache
+def cache_objects(_type: str, objects: List[Any], queue: Queue, rtdb_instance: RTDBTarget = None):
+    _put(_type, objects, queue, rtdb_instance, _NORMAL_CACHE)
 
 
-def count_quarantined(rtdb_instance=None) -> dict:
-    return sum(1 for _ in rtdb_instance.list(_QUARANTINE_CACHE))
+def remove_from_cache(_type: str, obj: Mapping[Any, Any], rtdb_instance: RTDBTarget = None):
+    return _remove(_type, obj, rtdb_instance, _NORMAL_CACHE)
+
+
+def get_cached_objects(_type: str, queue: Queue, rtdb_instance: RTDBTarget = None) -> dict:
+    _get(_type, queue, rtdb_instance, _NORMAL_CACHE)
+
+
+def count_cached(_type: str, rtdb_instance: RTDBTarget = None) -> dict:
+    path = f'{_NORMAL_CACHE}/{_type}'
+    return sum(1 for _ in rtdb_instance.list(path))
+
+
+def list_cached_types(rtdb_instance: RTDBTarget = None):
+    return _list_types(_NORMAL_CACHE, rtdb_instance)
+
+
+# quarantine cache
+def quarantine(_type: str, objects: List[Any], rtdb_instance: RTDBTarget = None):
+    LOG.warning(f'Quarantine {len(objects)} objects')
+    _put(_type, objects, Queue(), rtdb_instance, _QUARANTINE_CACHE)
+
+
+def get_quarantine_objects(_type: str, queue: Queue, rtdb_instance: RTDBTarget = None) -> dict:
+    return _get(_type, queue, rtdb_instance, _QUARANTINE_CACHE)
+
+
+def remove_from_quarantine(_type: str, obj: Mapping[Any, Any], rtdb_instance: RTDBTarget = None):
+    return _remove(_type, obj, rtdb_instance, _QUARANTINE_CACHE)
+
+
+def list_quarantined_types(rtdb_instance: RTDBTarget = None):
+    return _list_types(_QUARANTINE_CACHE, rtdb_instance)
+
+
+def count_quarantined(_type: str, rtdb_instance: RTDBTarget = None) -> dict:
+    path = f'{_QUARANTINE_CACHE}/{_type}'
+    return sum(1 for _ in rtdb_instance.list(path))
 
 
 def halve_iterable(obj):

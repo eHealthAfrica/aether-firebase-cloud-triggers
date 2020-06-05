@@ -85,33 +85,33 @@ def log_change(*args, **kwargs):
 # utility functions
 
 
-def get_client(server_name):
-    global CLIENTS
-    if not CLIENTS.get(server_name):
-        settings = get_settings('_servers')
-        try:
-            setting = settings[server_name]
-        except KeyError:
-            raise KeyError(f'No configured server named {server_name}')
-        URL = setting['url']
-        USER = setting['user']
-        PW = setting['password']
-        with Timeout(length=2, caller='Client not connect to Aether'):
-            try:
-                CLIENTS[server_name] = Client(URL, USER, PW)
-            except (BravadoConnectionError, HTTPBadGateway) as bve:
-                raise RequestException(
-                    'Could not connect to Aether to get OpenAPI spec')
+# def get_client(server_name):
+#     global CLIENTS
+#     if not CLIENTS.get(server_name):
+#         settings = get_settings('_servers')
+#         try:
+#             setting = settings[server_name]
+#         except KeyError:
+#             raise KeyError(f'No configured server named {server_name}')
+#         URL = setting['url']
+#         USER = setting['user']
+#         PW = setting['password']
+#         with Timeout(length=2, caller='Client not connect to Aether'):
+#             try:
+#                 CLIENTS[server_name] = Client(URL, USER, PW)
+#             except (BravadoConnectionError, HTTPBadGateway):
+#                 raise RequestException(
+#                     'Could not connect to Aether to get OpenAPI spec')
 
-    return CLIENTS[server_name]
+#     return CLIENTS[server_name]
 
 
-def get_entity(server_name):
-    global ENTITIES
-    if not ENTITIES.get(server_name):
-        client = get_client(server_name)
-        ENTITIES[server_name] = client.get_model('Entity')
-    return ENTITIES[server_name]
+# def get_entity(server_name):
+#     global ENTITIES
+#     if not ENTITIES.get(server_name):
+#         client = get_client(server_name)
+#         ENTITIES[server_name] = client.get_model('Entity')
+#     return ENTITIES[server_name]
 
 
 def get_settings(path):
@@ -123,65 +123,65 @@ def get_settings(path):
     return read_RTDB(full_path)
 
 
-def get_tracked(entity_path, db=DB.Realtime):
-    if db is DB.Realtime:
-        ext = 'rtdb'
-    else:
-        ext = 'cfs'
-    path = f'_tracked/{ext}'
-    settings = get_settings(path)
-    printf([path, settings])
-    for name, info in settings.items():
-        if info.get('path') in entity_path:
-            return info
-        else:
-            printf('{p} is not {ep}'.format(
-                p=info.get('path'),
-                ep=entity_path))
-    raise ValueError('no setting for {path} in {db}'.format(
-        path=path,
-        db=str(_type)
-    ))
+# def get_tracked(entity_path, db=DB.Realtime):
+#     if db is DB.Realtime:
+#         ext = 'rtdb'
+#     else:
+#         ext = 'cfs'
+#     path = f'_tracked/{ext}'
+#     settings = get_settings(path)
+#     printf([path, settings])
+#     for name, info in settings.items():
+#         if info.get('path') in entity_path:
+#             return info
+#         else:
+#             printf('{p} is not {ep}'.format(
+#                 p=info.get('path'),
+#                 ep=entity_path))
+#     raise ValueError('no setting for {path} in {db}'.format(
+#         path=path,
+#         db=str(_type)
+#     ))
 
 # Aether Submission Functions
 
 
-def aether_upsert_entity(server_name, _id, entity_dict):
-    network_exceptions = (
-        TimeoutError,
-        RequestException,
-        Exception
-    )
-    try:
-        res = aether_create_entity(server_name, entity_dict)
-        return res
-    except network_exceptions:
-        printf("Server unavailable... aborting upsert")
-        return
-    except AetherAPIException as ae_1:
-        printf("Couldn't create, attempting update")
-    try:
-        res = aether_update_entity(server_name, _id, entity_dict)
-        return res
-    except AetherAPIException:
-        printf("Couldn't update. API Error")
-        return None
+# def aether_upsert_entity(server_name, _id, entity_dict):
+#     network_exceptions = (
+#         TimeoutError,
+#         RequestException,
+#         Exception
+#     )
+#     try:
+#         res = aether_create_entity(server_name, entity_dict)
+#         return res
+#     except network_exceptions:
+#         printf("Server unavailable... aborting upsert")
+#         return
+#     except AetherAPIException:
+#         printf("Couldn't create, attempting update")
+#     try:
+#         res = aether_update_entity(server_name, _id, entity_dict)
+#         return res
+#     except AetherAPIException:
+#         printf("Couldn't update. API Error")
+#         return None
 
 
-def aether_create_entity(server_name, entity_dict):
-    Entity = get_entity(server_name)
-    entity = Entity(**entity_dict)
-    client = get_client(server_name)
-    with Timeout(length=3, caller='Entity Creation Timeout'):
-        return client.entities.create(data=entity)
+# def aether_create_entity(server_name, entity_dict):
+#     Entity = get_entity(server_name)
+#     entity = Entity(**entity_dict)
+#     client = get_client(server_name)
+#     with Timeout(length=3, caller='Entity Creation Timeout'):
+#         return client.entities.create(data=entity)
 
 
-def aether_update_entity(server_name, _id, entity_dict):
-    Entity = get_entity(server_name)
-    entity = Entity(**entity_dict)
-    client = get_client(server_name)
-    with Timeout(length=3, caller='Entity Update Timeout'):
-        return client.entities.update(id=_id, data=entity)
+# def aether_update_entity(server_name, _id, entity_dict):
+#     Entity = get_entity(server_name)
+#     entity = Entity(**entity_dict)
+#     client = get_client(server_name)
+#     with Timeout(length=3, caller='Entity Update Timeout'):
+#         return client.entities.update(id=_id, data=entity)
 
 # RTDB Helpers
 
@@ -211,7 +211,7 @@ def merge_delta(data):
     if not delta:
         delta = {}
     payload_data.update(delta)
-    if not 'id' in payload_data.keys():
+    if 'id' not in payload_data.keys():
         raise ValueError('All payloads must contain a UUID in the id field.')
     return payload_data
 
@@ -248,40 +248,40 @@ def handle_update_CFS(data, context):
     # document_path = '/'.join(path_parts[1:])
 
 
-@logged_operation
-def handle_update_RTDB(data, context):
-    path = context.resource.split('/refs/')[1]
-    printf(path)
-    _type = DB.Realtime
-    try:
-        setting = get_tracked(path, _type)
-    except ValueError:
-        printf(f'No setting for path {path}; finished. Limit scope to save cloud function calls')
-        return
-    payload = merge_delta(data)
-    _id = payload['id']
-    mode = Mode[setting['sync_mode']]
-    if mode is not Mode.FORWARD:
-        save_hash(_id, payload)
-    if mode is Mode.CONSUME:
-        printf(f'Not sending type {path} since mode is {mode}')
-        return
+# @logged_operation
+# def handle_update_RTDB(data, context):
+#     path = context.resource.split('/refs/')[1]
+#     printf(path)
+#     _type = DB.Realtime
+#     try:
+#         setting = get_tracked(path, _type)
+#     except ValueError:
+#         printf(f'No setting for path {path}; finished. Limit scope to save cloud function calls')
+#         return
+#     payload = merge_delta(data)
+#     _id = payload['id']
+#     mode = Mode[setting['sync_mode']]
+#     if mode is not Mode.FORWARD:
+#         save_hash(_id, payload)
+#     if mode is Mode.CONSUME:
+#         printf(f'Not sending type {path} since mode is {mode}')
+#         return
 
-    submission = {
-        "id": _id,
-        "payload": payload,
-        "projectschema": setting['project_schema_id'],
-        "status": "Publishable"
-    }
-    res = aether_upsert_entity(setting['server'], _id, submission)
-    if not res:
-        printf('Upsert operation failed')
-        save_error(payload, context, setting['server'])
-        printf('Error Saved')
+#     submission = {
+#         "id": _id,
+#         "payload": payload,
+#         "projectschema": setting['project_schema_id'],
+#         "status": "Publishable"
+#     }
+#     res = aether_upsert_entity(setting['server'], _id, submission)
+#     if not res:
+#         printf('Upsert operation failed')
+#         save_error(payload, context, setting['server'])
+#         printf('Error Saved')
 
-    if mode is Mode.FORWARD:
-        delete_RTDB(path)
-        printf(f'deleted: {path} on Mode.FORWARD rule.')
+#     if mode is Mode.FORWARD:
+#         delete_RTDB(path)
+#         printf(f'deleted: {path} on Mode.FORWARD rule.')
 
 
 @logged_operation

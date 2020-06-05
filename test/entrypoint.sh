@@ -23,7 +23,7 @@ PYTEST="pytest --cov-report term-missing --cov=app --cov-append -p no:cacheprovi
 # --cov=app --cov-append -p no:cacheprovider
 
 test_flake8() {
-    flake8 /code/. --config=/test/setup.cfg
+    flake8 /test/. --config=/test/setup.cfg
 }
 
 test() {

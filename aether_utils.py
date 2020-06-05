@@ -61,15 +61,15 @@ class Task(NamedTuple):
     data: Union[Dict, None] = None
 
 
-ARTEFACT_NAMES = Constants(
-    mappings='mappings',
-    mappingsets='mappingsets',
-    schemas='schemas',
-    schemadecorators='schemadecorators',
-    submissions='submissions',
-    schema_id='schema',
-    schema_definition='schema_definition',
-)
+# ARTEFACT_NAMES = Constants(
+#     mappings='mappings',
+#     mappingsets='mappingsets',
+#     schemas='schemas',
+#     schemadecorators='schemadecorators',
+#     submissions='submissions',
+#     schema_id='schema',
+#     schema_definition='schema_definition',
+# )
 
 _logger = settings.get_logger('Utils')
 

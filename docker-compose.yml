@@ -12,20 +12,29 @@ services:
 
   emu:
     image: ehealthafrica/firebase-emulator:latest
-    container_name: firebase_emulator
     volumes:
-      # Change the Firebase configuration by mounting a local firebase.json
-      - ./firebase.json:/app/firebase.json
+      # not required, but nice because it caches downloaded emulator binaries
+      - firebase:/home/docker/.cache/firebase/emulators:rw
+      - firebase:/app/fb:rw
     ports:
       - 5001:5001
       - 9000:9000
       - 8080:8080
       - 8085:8085
       - 5000:5000
+      - 4000:4000
     entrypoint:
-      ["firebase", "emulators:start"]
+      ["/app/entrypoint.sh", "run_basic"]
 
   test-library:
     build: .
     entrypoint:
       "/test/entrypoint.sh"
+
+    environment:
+      FIRESTORE_EMULATOR_HOST: emu:8080
+      FIREBASE_DATABASE_EMULATOR_HOST: emu:9000
+
+volumes:
+  # not required, but nice because it caches downloaded emulator binaries
+  firebase:

@@ -1,3 +1,4 @@
+aet.consumer
 coverage
 firebase_admin
 flake8
