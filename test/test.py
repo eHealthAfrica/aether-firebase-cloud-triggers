@@ -23,6 +23,16 @@ import pytest
 from .fixtures import *  # noqa
 # from .aether_functions import *  # noqa
 from .app.fb_utils import halve_iterable
+from .app.config import get_kafka_config, kafka_admin_uses, get_kafka_admin_config
+
+
+@pytest.mark.unit
+def test__kafka_config():
+    _conf = get_kafka_config()
+    for k in kafka_admin_uses.keys():
+        assert(_conf.get(k) is not None)
+    _conf = get_kafka_admin_config()
+    assert(set(_conf.keys()) == set(kafka_admin_uses.keys()))
 
 
 @pytest.mark.unit

@@ -26,13 +26,31 @@ from typing import Any, Dict, List
 
 from aet.logger import get_logger
 
+from spavro.schema import parse
+
+from aet.kafka_utils import (
+    create_topic,
+    get_producer,
+    get_admin_client,
+    get_broker_info,
+    is_kafka_available,
+    produce
+)
+
+from .config import (  # noqa
+    get_kafka_config,
+    get_kafka_admin_config,
+    get_function_config
+)
+
 from . import fb_utils  # noqa
+from fb_utils import InputSet
 
 
 _logger = get_logger('Manager')
 
+MAX_KAFKA_MESSAGE_SIZE = 2_000_000
 
-CFS = None
 RTDB = None
 
 
@@ -48,12 +66,6 @@ class ExportManager():
         self.worker_thread = Thread(target=self.worker, daemon=False)
 
     def _connect_firebase(self, rtdb=None, cfs=None):
-        if not cfs:
-            self._init_global_firebase()
-            global CFS
-            self.cfs = CFS
-        else:
-            self.cfs = cfs
         if not rtdb:
             self._init_global_firebase()
             global RTDB
@@ -62,9 +74,7 @@ class ExportManager():
             self.rtdb = rtdb
 
     def _init_global_firebase(self):
-        global CFS
-        if not CFS:
-            pass
+        global RTDB
         if not RTDB:
             pass
 
@@ -78,20 +88,19 @@ class ExportManager():
         # get messages
         self.read_inbound()
         self.process()
+        _logger.info('started')
         self.comm_pool.close()
         self.comm_pool.join()
-        _logger.info('started')
+        _logger.info('finished')
 
     def process(self):
         _logger.debug('Looking for work')
         read_subs = self.read_inbound()
-        for realm, objs in read_subs.items():
-            self.kernel_comm_pool.apply_async(
+        for input in read_subs.items():
+            self.comm_pool.apply_async(
                 func=publish,
                 args=(
-                    objs,
-                    self.processed_submissions,
-                    self.rtdb,
+                    input,
                 ))
 
     def load_failed(self) -> None:
@@ -103,36 +112,54 @@ class ExportManager():
         pass
 
 
-def publish(objs: List[Any], queue: Queue, rtdb=None):
-    if not objs:
-        return 0
+def publish(input: InputSet):
+    rtdb = RTDB  # GLOBAL
+    # TODO look at options in InputSet and route
+    return _publish_kafka(input.docs, input.schema, input.name, rtdb)
 
+
+def _publish_kafka(objs: List[Any], schema: dict, _type: str, rtdb):
     try:
-        # send data
+        _send_kafka(objs, schema, _type)
         for obj in objs:
-            fb_utils.remove_from_cache(obj, rtdb)
-            fb_utils.remove_from_quarantine(obj, rtdb)
+            fb_utils.remove_from_cache(_type, obj, rtdb)
+            fb_utils.remove_from_quarantine(_type, obj, rtdb)
         return len(objs)
-    # TODO handle expected errors
-    except Exception:  # bad_request / needs quarantine?
-        return handle_kernel_errors(objs, queue, rtdb)
+    except RuntimeError as rte:
+        _logger.info(rte)
+        return _handle_kernel_errors_kafka(objs, schema, _type, rtdb)
     except Exception as no_connection:
-        _logger.warning(f'Unexpected Response: {no_connection}')
-        fb_utils.cache_objects(objs, queue, rtdb)
-        return 0
+        _logger.error(no_connection)
+        fb_utils.cache_objects(_type, objs, rtdb)
 
 
-def handle_kernel_errors(objs: List[Any], queue: Queue, rtdb=None):
+def _send_kafka(objs: List[Any], schema, _type):
+    # check size
+    pass
+    # total_size = fb_utils.utf8size(schema) + fb_utils.utf8size(objs)
+    # if total_size >= MAX_KAFKA_MESSAGE_SIZE:
+    #     raise RuntimeError(f'Message size: {total_size} exceeds maximum. Chunking.')
+    # kadmin = get_admin_client(kafka_security)
+    # if not get_broker_info(kadmin):
+    #     raise ConnectionError('Could not connect to Kafka.')
+    # new_topic = f'{TENANT}.logiak.{_type}'
+    # create_topic(kadmin, new_topic)
+    # producer = get_producer(kafka_security)
+    # schema = parse(json.dumps(schema))
+    # res = produce(objs, schema, new_topic, producer)
+
+
+def _handle_kernel_errors_kafka(objs: List[Any], schema, _type, rtdb=None):
     _size = len(objs)
     if _size > 1:
         # break down big failures and retry parts
         # reducing by half each time
         _chunks = fb_utils.halve_iterable(objs)
         _logger.debug(f'Trying smaller chunks than {_size}...')
-        return sum([publish(chunk, queue, rtdb) for chunk in _chunks])
+        return sum([_publish_kafka(chunk, schema, _type, rtdb) for chunk in _chunks])
 
     # Move bad object from cache to quarantine
     for obj in objs:
-        fb_utils.remove_from_cache(obj, rtdb)
-    fb_utils.quarantine(objs, rtdb)
+        fb_utils.remove_from_cache(_type, obj, rtdb)
+    fb_utils.quarantine(_type, objs, rtdb)
     return 0

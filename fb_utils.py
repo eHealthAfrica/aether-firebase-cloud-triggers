@@ -58,7 +58,7 @@ _FAILED_CACHES = [
 @dataclass
 class InputSet:
     name: str
-    docs: Queue
+    docs: List[Any]
     options: Dict
     schema: Dict
 
@@ -85,13 +85,13 @@ class InputManager:
             )
 
     def _prepare_docs(self, _type, _docs):
-        good_objects = self._filter_good_objects(_type, _docs, Queue())
+        good_objects = self._filter_good_objects(_type, _docs)
         for _id, item in _docs:
             # delete from sync cache
             self._mark_copied(_type, _id)
         return good_objects
 
-    def _filter_good_objects(self, _type, docs, queue) -> Queue:
+    def _filter_good_objects(self, _type, docs) -> List[Any]:
         passed = []
         failed = []
         for _id, _doc in docs:
@@ -107,9 +107,9 @@ class InputManager:
                 for error in result.errors:
                     err_msg = avro_tools.format_validation_error(error)
                     LOG.error(f'Schema validation failed on type {_type}: {err_msg}')
-        cache_objects(_type, passed, queue, self.rtdb)
+        cache_objects(_type, passed, self.rtdb)
         quarantine(_type, failed, self.rtdb)
-        return queue
+        return passed
 
     def _mark_copied(self, _type, _id):
         path = f'{_SYNC_QUEUE}/{_type}/documents/{_id}'
@@ -177,8 +177,7 @@ class RTDBTarget(object):
         _ref = self.reference(path)
         try:
             return json.loads(_ref.get())
-        except Exception as err:
-            raise err
+        except (json.JSONDecodeError):
             return _ref.get()
 
     def reference(self, path):
@@ -206,7 +205,6 @@ class RTDBTarget(object):
 def _put(
     _type: str,
     objects: List[Any],
-    queue: Queue,
     rtdb_instance: RTDBTarget = None,
     _cache=_NORMAL_CACHE
 ):
@@ -215,20 +213,21 @@ def _put(
     try:
         for obj in objects:
             rtdb_instance.add(obj['id'], path, obj)
-            queue.put(obj)
     except Exception as err:  # pragma: no cover
         LOG.critical(f'Could not save failed objects to RTDB {str(err)}')
 
 
-def _get(_type: str, queue: Queue, rtdb_instance: RTDBTarget = None, _cache=_NORMAL_CACHE) -> dict:
+def _get(_type: str, rtdb_instance: RTDBTarget = None, _cache=_NORMAL_CACHE) -> List[Any]:
+    results = []
     path = f'{_cache}/{_type}'
-    failed = rtdb_instance.list(path)
-    for _id in failed:
+    docs = rtdb_instance.list(path)
+    for _id in docs:
         res = rtdb_instance.get(_id, path)
         if res:
-            queue.put(res)
+            results.append(res)
         else:
-            LOG.warning(f'Could not fetch object {_id}')
+            LOG.warning(f'Could not fetch object {_id} from path {path}')
+    return results
 
 
 def _remove(
@@ -244,7 +243,7 @@ def _remove(
         return True
     except Exception as err:
         LOG.error(err)
-        raise err
+        return False
 
 
 def _list_types(
@@ -255,19 +254,19 @@ def _list_types(
 
 
 # normal cache
-def cache_objects(_type: str, objects: List[Any], queue: Queue, rtdb_instance: RTDBTarget = None):
-    _put(_type, objects, queue, rtdb_instance, _NORMAL_CACHE)
+def cache_objects(_type: str, objects: List[Any], rtdb_instance: RTDBTarget = None):
+    return _put(_type, objects, rtdb_instance, _NORMAL_CACHE)
 
 
 def remove_from_cache(_type: str, obj: Mapping[Any, Any], rtdb_instance: RTDBTarget = None):
     return _remove(_type, obj, rtdb_instance, _NORMAL_CACHE)
 
 
-def get_cached_objects(_type: str, queue: Queue, rtdb_instance: RTDBTarget = None) -> dict:
-    _get(_type, queue, rtdb_instance, _NORMAL_CACHE)
+def get_cached_objects(_type: str, rtdb_instance: RTDBTarget = None) -> dict:
+    return _get(_type, rtdb_instance, _NORMAL_CACHE)
 
 
-def count_cached(_type: str, rtdb_instance: RTDBTarget = None) -> dict:
+def count_cached(_type: str, rtdb_instance: RTDBTarget = None) -> int:
     path = f'{_NORMAL_CACHE}/{_type}'
     return sum(1 for _ in rtdb_instance.list(path))
 
@@ -279,11 +278,11 @@ def list_cached_types(rtdb_instance: RTDBTarget = None):
 # quarantine cache
 def quarantine(_type: str, objects: List[Any], rtdb_instance: RTDBTarget = None):
     LOG.warning(f'Quarantine {len(objects)} objects')
-    _put(_type, objects, Queue(), rtdb_instance, _QUARANTINE_CACHE)
+    _put(_type, objects, rtdb_instance, _QUARANTINE_CACHE)
 
 
-def get_quarantine_objects(_type: str, queue: Queue, rtdb_instance: RTDBTarget = None) -> dict:
-    return _get(_type, queue, rtdb_instance, _QUARANTINE_CACHE)
+def get_quarantine_objects(_type: str, rtdb_instance: RTDBTarget = None) -> List[Any]:
+    return _get(_type, rtdb_instance, _QUARANTINE_CACHE)
 
 
 def remove_from_quarantine(_type: str, obj: Mapping[Any, Any], rtdb_instance: RTDBTarget = None):
@@ -304,3 +303,12 @@ def halve_iterable(obj):
     _chunk_size = int(_size / 2) + (_size % 2)
     for i in range(0, _size, _chunk_size):
         yield obj[i:i + _chunk_size]
+
+
+def utf8size(obj) -> int:
+    if not isinstance(obj, str):
+        try:
+            obj = json.dumps(obj)
+        except json.JSONEncodeError:
+            obj = str(obj)
+    return len(obj.encode('utf-8'))

@@ -18,7 +18,6 @@
 # specific language governing permissions and limitations
 # under the License.
 
-from multiprocessing import Queue
 from uuid import uuid4
 
 
@@ -33,6 +32,7 @@ from . import (  # noqa
 from .app.fb_utils import (  # noqa
     RTDBTarget,
     InputManager,
+    InputSet,
     _NORMAL_CACHE,
     _QUARANTINE_CACHE,
     # cache
@@ -89,19 +89,14 @@ def test__crud_cfs(cfs):  # noqa
 def test__cache_operations(TestRTDBTarget):
     _type = 'TEST1'
     path = f'{_NORMAL_CACHE}/{_type}'
-    docs = [{'id': x, 'val': str(uuid4())} for x in range(100)]
-    q = Queue()
-    cache_objects(_type, docs, q, TestRTDBTarget)
-    assert(q.qsize() == 100)
+    docs = [{'id': str(uuid4()), 'val': str(uuid4())} for x in range(100)]
+    cache_objects(_type, docs, TestRTDBTarget)
     assert(sum(1 for _ in TestRTDBTarget.list(path)) == 100)
     assert(_type in list_cached_types(TestRTDBTarget))
-    q2 = Queue()
-    get_cached_objects(_type, q2, TestRTDBTarget)
-    assert(q2.qsize() == 100)
-    while not q2.empty():
-        doc = q2.get()
+    q2 = get_cached_objects(_type, TestRTDBTarget)
+    assert(len(q2) >= 100)
+    for doc in q2:
         remove_from_cache(_type, doc, TestRTDBTarget)
-    assert(q2.qsize() == 0)
     assert(sum(1 for _ in TestRTDBTarget.list(path)) == 0)
 
 
@@ -109,17 +104,14 @@ def test__cache_operations(TestRTDBTarget):
 def test__quarantine_operations(TestRTDBTarget):
     _type = 'TEST2'
     path = f'{_QUARANTINE_CACHE}/{_type}'
-    docs = [{'id': x, 'val': str(uuid4())} for x in range(100)]
+    docs = [{'id': str(uuid4()), 'val': str(uuid4())} for x in range(100)]
     quarantine(_type, docs, TestRTDBTarget)
     assert(count_quarantined(_type, TestRTDBTarget) == 100)
     assert(list_quarantined_types(TestRTDBTarget) == [_type])
-    q2 = Queue()
-    get_quarantine_objects(_type, q2, TestRTDBTarget)
-    assert(q2.qsize() == 100)
-    while not q2.empty():
-        doc = q2.get()
+    q2 = get_quarantine_objects(_type, TestRTDBTarget)
+    assert(len(q2) >= 100)
+    for doc in q2:
         remove_from_quarantine(_type, doc, TestRTDBTarget)
-    assert(q2.qsize() == 0)
     assert(sum(1 for _ in TestRTDBTarget.list(path)) == 0)
 
 
@@ -128,8 +120,8 @@ def test__load_prepared(loaded_cache, TestRTDBTarget):
     _type = 'xform-test'
     man = InputManager(TestRTDBTarget)
     _sets = man.get_inputs()
-    _set = next(_sets)
+    _set: InputSet = next(_sets)
     assert(_set.name == 'xform-test')
-    assert(_set.docs.qsize() == 10)
+    assert(len(_set.docs) == 10)
     assert(count_quarantined(_type, TestRTDBTarget) == 0)
-    assert(count_cached(_type, TestRTDBTarget) == 10)
+    assert(count_cached(_type, TestRTDBTarget) >= 10)
