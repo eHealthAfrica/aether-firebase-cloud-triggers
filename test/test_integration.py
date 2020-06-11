@@ -223,11 +223,6 @@ def test__exporter(load_cache, consumer, TestRTDBTarget):
     consumer.seek_to_beginning()
     messages = _exhaust_consumer(consumer, TEST_DOC_COUNT, _topic_name)
     assert(len(messages) == TEST_DOC_COUNT)
-    # for x in range(10):
-    #     # wait for callbacks to execute
-    #     if count_cached(_type, TestRTDBTarget) == 0:
-    #         break
-    #     sleep(1)
     assert(count_cached(_type, TestRTDBTarget) == 0)
     assert(count_quarantined(_type, TestRTDBTarget) == 0)
     delete_topic(KADMIN, _topic_name)
