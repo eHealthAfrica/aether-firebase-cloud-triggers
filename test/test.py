@@ -22,8 +22,9 @@ import pytest
 
 from .fixtures import *  # noqa
 # from .aether_functions import *  # noqa
-from .app.fb_utils import halve_iterable
+from .app.fb_utils import halve_iterable, sanitize_topic
 from .app.config import get_kafka_config, kafka_admin_uses, get_kafka_admin_config
+from .app.hash import make_hash
 
 
 @pytest.mark.unit
@@ -33,6 +34,16 @@ def test__kafka_config():
         assert(_conf.get(k) is not None)
     _conf = get_kafka_admin_config()
     assert(set(_conf.keys()) == set(kafka_admin_uses.keys()))
+
+
+@pytest.mark.parametrize('test,expected', [
+    ('%topic', '_topic'),
+    ('Someother.topic', 'Someother.topic'),
+    ('a_third&option', 'a_third_option')
+])
+@pytest.mark.unit
+def test__sanitize_topic_name(test, expected):
+    assert(sanitize_topic(test) == expected)
 
 
 @pytest.mark.unit
@@ -71,3 +82,16 @@ def test__halve_iterable():
     b, c = halve_iterable(a)
     assert(len(b) == 3)
     assert(len(c) == 2)
+
+
+@pytest.mark.unit
+def test__hash():
+    _type_a = 'a'
+    _type_b = 'b'
+    doc_a = {'a': 'value', 'list': [1, 2, 3]}
+    doc_b = {'a': 'value', 'list': [2, 1, 3]}
+    doc_c = {'a': 'value', 'list': [2, 1]}
+    assert(make_hash(_type_a, doc_a) == make_hash(_type_a, doc_a))
+    assert(make_hash(_type_a, doc_a) != make_hash(_type_b, doc_a))
+    assert(make_hash(_type_a, doc_a) == make_hash(_type_a, doc_b))
+    assert(make_hash(_type_a, doc_a) != make_hash(_type_a, doc_c))

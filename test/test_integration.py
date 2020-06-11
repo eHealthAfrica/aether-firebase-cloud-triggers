@@ -18,6 +18,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
+from time import sleep
 from uuid import uuid4
 
 
@@ -27,8 +28,18 @@ import pytest
 from . import *  # noqa
 from . import (  # noqa
     rtdb,
-    cfs
+    cfs,
+    delete_topic,
+    get_admin_client,
+    TENANT,
+    KADMIN,
+    KAFKA_SECURITY,
+    CONF,
+    LOG,
+    TEST_DOC_COUNT
 )
+
+from .app import exporter
 from .app.fb_utils import (  # noqa
     RTDBTarget,
     InputManager,
@@ -48,6 +59,7 @@ from .app.fb_utils import (  # noqa
     remove_from_quarantine,
     count_quarantined
 )
+from .app import kafka_utils
 
 
 @pytest.fixture(scope='session')
@@ -107,7 +119,7 @@ def test__quarantine_operations(TestRTDBTarget):
     docs = [{'id': str(uuid4()), 'val': str(uuid4())} for x in range(100)]
     quarantine(_type, docs, TestRTDBTarget)
     assert(count_quarantined(_type, TestRTDBTarget) == 100)
-    assert(list_quarantined_types(TestRTDBTarget) == [_type])
+    assert(_type in list_quarantined_types(TestRTDBTarget))
     q2 = get_quarantine_objects(_type, TestRTDBTarget)
     assert(len(q2) >= 100)
     for doc in q2:
@@ -116,12 +128,106 @@ def test__quarantine_operations(TestRTDBTarget):
 
 
 @pytest.mark.integration
-def test__load_prepared(loaded_cache, TestRTDBTarget):
+def test__load_prepared(load_cache, TestRTDBTarget):
+    # using the loaded_cache fixture loads the cache (on every use)
+    _type = 'xform-test'
+    load_cache(_type, TEST_DOC_COUNT)
+    man = InputManager(TestRTDBTarget)
+    _sets = man.get_inputs()
+    _set: InputSet = next(_sets)
+    assert(_set.name == _type)
+    assert(len(_set.docs) == TEST_DOC_COUNT)
+    assert(count_quarantined(_type, TestRTDBTarget) == 0)
+    assert(count_cached(_type, TestRTDBTarget) == TEST_DOC_COUNT)
+
+
+@pytest.mark.integration
+def test__load_cached(TestRTDBTarget):
     _type = 'xform-test'
     man = InputManager(TestRTDBTarget)
     _sets = man.get_inputs()
     _set: InputSet = next(_sets)
-    assert(_set.name == 'xform-test')
-    assert(len(_set.docs) == 10)
+    assert(_set.name == _type)
+    assert(len(_set.docs) == TEST_DOC_COUNT)
     assert(count_quarantined(_type, TestRTDBTarget) == 0)
-    assert(count_cached(_type, TestRTDBTarget) >= 10)
+    assert(count_cached(_type, TestRTDBTarget) == TEST_DOC_COUNT)
+
+
+def _exhaust_consumer(consumer, expected_count, expected_topic):
+    while True:
+        LOG.debug('looking for expected topic')
+        meta = consumer.list_topics(timeout=3)
+        if meta:
+            if expected_topic in meta.topics.keys():
+                break
+        LOG.debug('waiting for kafka to populate')
+    _all_messages = []
+    for x in range(30):
+        messages = consumer.poll_and_deserialize(timeout=1, num_messages=1)
+        for msg in messages:
+            _all_messages.append(msg)
+        # read messages and check masking
+        if len(_all_messages) == expected_count:
+            LOG.debug(f'found {len(_all_messages)}')
+            break
+        else:
+            LOG.debug(f'still only {len(_all_messages)}')
+    return _all_messages
+
+
+@pytest.mark.integration
+def test__publish_kafka(consumer, TestRTDBTarget):
+    _type = 'xform-test'
+    _topic_name = f'{TENANT}.logiak.{_type}'
+    man = InputManager(TestRTDBTarget)
+    _sets = man.get_inputs()
+    _input: InputSet = next(_sets)
+    assert(len(_input.docs) > 0)
+    _ct = kafka_utils.publish(
+        _input.docs,
+        _input.schema,
+        _input.name,
+        TestRTDBTarget,
+        10_000
+    )
+    assert(_ct == 0)  # messages over limit, all quarantined?
+    assert(count_quarantined(_type, TestRTDBTarget) == TEST_DOC_COUNT)
+    # clear it
+    TestRTDBTarget.reference(f'{_QUARANTINE_CACHE}/{_type}').delete()
+    assert(count_quarantined(_type, TestRTDBTarget) == 0)
+    _ct = kafka_utils.publish(
+        _input.docs,
+        _input.schema,
+        _input.name,
+        TestRTDBTarget,
+        100_000
+    )
+    assert(_ct == TEST_DOC_COUNT)
+    assert(count_cached(_type, TestRTDBTarget) == 0)
+    assert(count_quarantined(_type, TestRTDBTarget) == 0)
+    consumer.subscribe([_topic_name])
+    consumer.seek_to_beginning()
+    messages = _exhaust_consumer(consumer, TEST_DOC_COUNT, _topic_name)
+    assert(len(messages) == TEST_DOC_COUNT)
+    delete_topic(KADMIN, _topic_name)
+
+
+@pytest.mark.integration
+def test__exporter(load_cache, consumer, TestRTDBTarget):
+    _type = 'xform-test-1'
+    load_cache(_type, TEST_DOC_COUNT)
+    _topic_name = f'{TENANT}.logiak.{_type}'
+    app = exporter.ExportManager(TestRTDBTarget)
+    app.run()
+    consumer.subscribe([_topic_name])
+    consumer.seek_to_beginning()
+    messages = _exhaust_consumer(consumer, TEST_DOC_COUNT, _topic_name)
+    assert(len(messages) == TEST_DOC_COUNT)
+    # for x in range(10):
+    #     # wait for callbacks to execute
+    #     if count_cached(_type, TestRTDBTarget) == 0:
+    #         break
+    #     sleep(1)
+    assert(count_cached(_type, TestRTDBTarget) == 0)
+    assert(count_quarantined(_type, TestRTDBTarget) == 0)
+    delete_topic(KADMIN, _topic_name)

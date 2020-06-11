@@ -38,15 +38,14 @@ from google.cloud.firestore_v1.client import Client as CFS
 
 # from spavro.schema import parse
 
-# from aet.kafka_utils import (
-#     create_topic,
-#     delete_topic,
-#     get_producer,
-#     get_admin_client,
-#     # get_broker_info,
-#     # is_kafka_available,
-#     produce
-# )
+from aet.kafka_utils import (
+    delete_topic,
+    get_admin_client
+)
+
+from aet.kafka import (
+    KafkaConsumer
+)
 
 from aet.helpers import chunk_iterable
 from aet.logger import get_logger
@@ -54,14 +53,20 @@ from aet.logger import get_logger
 
 from aether.python.avro import generation
 
+from .app import config
 from .app import fb_utils
 
 LOG = get_logger('FIXTURE')
 
+KAFKA_SECURITY = config.get_kafka_admin_config()
+KADMIN = get_admin_client(KAFKA_SECURITY)
+CONF = config.get_function_config()
+TENANT = CONF.get('tenant')
 
 URL = 'http://localhost:9013'
 kafka_server = "kafka-test:29099"
 
+TEST_DOC_COUNT = 100
 
 project_name_rtdb = 'tenant:rtdb_test_app'
 project_name_cfs = 'cfstestapp'  # NO UNDERSCORES ALLOWED!
@@ -78,8 +83,6 @@ LOG.info(rtdb_fq)
 
 
 # pick a random tenant for each run so we don't need to wipe ES.
-TS = str(uuid4()).replace('-', '')[:8]
-TENANT = f'TEN{TS}'
 TEST_TOPIC = 'firebase_test_topic'
 
 GENERATED_SAMPLES = {}
@@ -119,23 +122,47 @@ def cfs():
     return fb_utils.Firestore(instance=instance)
 
 
+@pytest.fixture(scope='function')
+def consumer():
+    consumer_settings = {
+        **KAFKA_SECURITY,
+        **{'group.id': f'{TENANT}.logiak-test-{uuid4()}'},
+        **{
+            'auto.offset.reset': 'earliest',
+            'enable.auto.commit': True,
+            # 'auto.commit.interval.ms': 2500,
+            'aether_emit_flag_required': False,
+            'aether_masking_schema_levels': ['false', 'true'],
+            'aether_masking_schema_emit_level': 'false',
+            # 'heartbeat.interval.ms': 2500,
+            # 'session.timeout.ms': 18000,
+            # 'request.timeout.ms': 20000
+        }
+    }
+    _consumer = KafkaConsumer(**consumer_settings)
+    yield _consumer
+    _consumer.close()
+
+
 @pytest.mark.integration
 @pytest.fixture(scope='function')
-def loaded_cache(rtdb, sample_generator):
-    _type = 'xform-test'
-    base_path = 'test_project'
-    _db = fb_utils.RTDBTarget(base_path=base_path, rtdb=rtdb)
-    _schema = ANNOTATED_SCHEMA
-    docs_path = f'{fb_utils._SYNC_QUEUE}/{_type}/documents/'
-    schema_path = f'{base_path}/{fb_utils._SYNC_QUEUE}/{_type}/schema'
-    options_path = f'{base_path}/{fb_utils._SYNC_QUEUE}/{_type}/options'
-    # using raw ref you have to dumps yourself
-    _db._raw_reference(schema_path).set(json.dumps(_schema))
-    _db._raw_reference(options_path).set(json.dumps({}))
-    for subset in sample_generator(max=10, chunk=10):
-        for _doc in subset:
-            _id = _doc['id']
-            _db.add(_id, docs_path, _doc)
+def load_cache(rtdb, sample_generator):
+
+    def load(_type, count=TEST_DOC_COUNT):
+        base_path = 'test_project'
+        _db = fb_utils.RTDBTarget(base_path=base_path, rtdb=rtdb)
+        _schema = ANNOTATED_SCHEMA
+        docs_path = f'{fb_utils._SYNC_QUEUE}/{_type}/documents/'
+        schema_path = f'{base_path}/{fb_utils._SYNC_QUEUE}/{_type}/schema'
+        options_path = f'{base_path}/{fb_utils._SYNC_QUEUE}/{_type}/options'
+        # using raw ref you have to dumps yourself
+        _db._raw_reference(schema_path).set(json.dumps(_schema))
+        _db._raw_reference(options_path).set(json.dumps({}))
+        for subset in sample_generator(max=count, chunk=count):
+            for _doc in subset:
+                _id = _doc['id']
+                _db.add(_id, docs_path, _doc)
+    yield load
 
 
 def get_local_session(self):

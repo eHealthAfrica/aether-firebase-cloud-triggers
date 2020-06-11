@@ -16,20 +16,25 @@
 # specific language governing permissions and limitations
 # under the License.
 
-import signal
+import json
+from hashlib import md5
 
 
-class Timeout:
-    def __init__(self, length=1, caller='Timeout'):
-        self.length = length
-        self.caller = caller
+class SortedListEncoder(json.JSONEncoder):
+    def encode(self, obj):
+        def sort_lists(item):
+            if isinstance(item, list):
+                return sorted(sort_lists(i) for i in item)
+            elif isinstance(item, dict):
+                return {k: sort_lists(v) for k, v in item.items()}
+            else:
+                return item
+        return super(SortedListEncoder, self).encode(sort_lists(obj))
 
-    def __enter__(self):
-        signal.signal(signal.SIGALRM, self.handle_timeout)
-        signal.alarm(self.length)
 
-    def __exit__(self, type, value, traceback):
-        signal.alarm(0)
-
-    def handle_timeout(self, signum, frame):
-        raise TimeoutError(self.caller)
+def make_hash(_type, msg):
+    sorted_msg = json.dumps(msg, cls=SortedListEncoder)
+    sorted_msg = f'{_type}:{sorted_msg}'
+    encoded_msg = sorted_msg.encode('utf-8')
+    hash = str(md5(encoded_msg).hexdigest())[:16]
+    return hash

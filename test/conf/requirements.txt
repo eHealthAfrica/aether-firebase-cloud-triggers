@@ -1,4 +1,4 @@
-aet.consumer
+aet.consumer==3.8.0
 coverage
 firebase_admin
 flake8

@@ -37,22 +37,15 @@ import spavro.io
 from aether.python.avro import tools as avro_tools
 from aet.logger import get_logger
 
+from .config import get_function_config
+
+CONF = get_function_config()
 LOG = get_logger('Utils')
 
 
-class CacheType(Enum):
-    NORMAL = 1
-    QUARANTINE = 2
-    NONE = 3
-
-
-_SYNC_QUEUE = '_sync_queue'  # TODO environ.get('QUEUE_PATH')
-_NORMAL_CACHE = '_failed'
+_SYNC_QUEUE = CONF.get('sync_path')
+_NORMAL_CACHE = '_cached'
 _QUARANTINE_CACHE = '_quarantined'
-_FAILED_CACHES = [
-    (CacheType.NORMAL, _NORMAL_CACHE),
-    (CacheType.QUARANTINE, _QUARANTINE_CACHE),
-]
 
 
 @dataclass
@@ -64,12 +57,16 @@ class InputSet:
 
 
 class InputManager:
+    rtdb: 'RTDBTarget'
+    schemas: Dict[str, Dict]
 
     def __init__(self, rtdb_instance: 'RTDBTarget'):
         self.rtdb = rtdb_instance
         self.schemas = {}
 
     def _read_all(self):
+        # even if there are no documents, we get a list of types
+        # because the schemas and options are housed here.
         return self.rtdb.reference(_SYNC_QUEUE).get(shallow=False)
 
     def get_inputs(self) -> List[InputSet]:
@@ -77,12 +74,33 @@ class InputManager:
         for _type, obj in _inputs.items():
             schema = obj.get('schema')
             self.schemas[_type] = spavro.schema.parse(schema)
+            docs = []
+            # cached docs
+            docs.extend(self._filter_good_objects(_type, self._checkout_cached(_type)))
+            # new docs
+            docs.extend(self._prepare_docs(_type, obj.get('documents', {}).items()))
             yield InputSet(
                 name=_type,
-                docs=self._prepare_docs(_type, obj.get('documents').items()),
+                docs=docs,
                 options=obj.get('options'),
                 schema=schema
             )
+
+    def _checkout_cached(self, _type):
+        path = f'{_NORMAL_CACHE}/{_type}'
+        docs = []
+
+        doc_ids = self.rtdb.list(path=path)
+        for _id in doc_ids:
+            try:
+                doc = self.rtdb.get(_id, path)
+                # match convention from sync cache...
+                docs.append([_id, json.dumps(doc)])
+                self.rtdb.get(_id, path)
+                self.rtdb.remove(_id, path)
+            except Exception as err:
+                LOG.debug(f'could not retrieve {_id} from {path}: {err}')
+        return docs
 
     def _prepare_docs(self, _type, _docs):
         good_objects = self._filter_good_objects(_type, _docs)
@@ -277,8 +295,9 @@ def list_cached_types(rtdb_instance: RTDBTarget = None):
 
 # quarantine cache
 def quarantine(_type: str, objects: List[Any], rtdb_instance: RTDBTarget = None):
-    LOG.warning(f'Quarantine {len(objects)} objects')
-    _put(_type, objects, rtdb_instance, _QUARANTINE_CACHE)
+    if objects:
+        LOG.warning(f'Quarantine {len(objects)} objects')
+        _put(_type, objects, rtdb_instance, _QUARANTINE_CACHE)
 
 
 def get_quarantine_objects(_type: str, rtdb_instance: RTDBTarget = None) -> List[Any]:
@@ -309,6 +328,12 @@ def utf8size(obj) -> int:
     if not isinstance(obj, str):
         try:
             obj = json.dumps(obj)
-        except json.JSONEncodeError:
+        except json.JSONDecodeError:
             obj = str(obj)
     return len(obj.encode('utf-8'))
+
+
+def sanitize_topic(topic):
+    return ''.join(
+        [i if i.isalnum() or i in ['-', '_', '.'] else '_' for i in topic]
+    )
