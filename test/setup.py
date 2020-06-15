@@ -1,4 +1,6 @@
-# Copyright (C) 2018 by eHealth Africa : http://www.eHealthAfrica.org
+#!/usr/bin/env python
+
+# Copyright (C) 2019 by eHealth Africa : http://www.eHealthAfrica.org
 #
 # See the NOTICE file distributed with this work for additional information
 # regarding copyright ownership.
@@ -16,17 +18,12 @@
 # specific language governing permissions and limitations
 # under the License.
 
-import signal
+from setuptools import find_packages, setup
 
-class Timeout:
-    def __init__(self, length=1, caller='Timeout'):
-        self.length = length
-        self.caller = caller
-    def __enter__(self):
-        signal.signal(signal.SIGALRM, self.handle_timeout)
-        signal.alarm(self.length)
-    def __exit__(self, type, value, traceback):
-        signal.alarm(0)
-    def handle_timeout(self, signum, frame):
-        raise TimeoutError(self.caller)
-    
+setup(
+    name='firebase.functions.text',
+    author='eHealth Africa',
+    author_email='aether@ehealthafrica.org',
+    license='Apache2 License',
+    packages=find_packages(),
+)

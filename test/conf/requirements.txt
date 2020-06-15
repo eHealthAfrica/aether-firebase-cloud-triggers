@@ -1,0 +1,11 @@
+aet.consumer==3.8.0
+coverage
+firebase_admin
+flake8
+functions-framework==1.0.0
+google.cloud
+pytest
+pytest-cov
+pytest-runner
+requests
+responses

@@ -1,0 +1,47 @@
+# ------------------------------------------------------------------------------
+# Firebase Emulator for Tests local and CI
+# ------------------------------------------------------------------------------
+
+version: "2.1"
+
+services:
+
+  # -------------------------------------
+  # Firebase Eumulator
+  # -------------------------------------
+
+  emu:
+    image: ehealthafrica/firebase-emulator:latest
+    volumes:
+      # not required, but nice because it caches downloaded emulator binaries
+      - firebase:/home/docker/.cache/firebase/emulators:rw
+      - firebase:/app/fb:rw
+    ports:
+      - 5001:5001
+      - 9000:9000
+      - 8080:8080
+      - 8085:8085
+      - 5000:5000
+      - 4000:4000
+    entrypoint:
+      ["/app/entrypoint.sh", "run_basic"]
+
+  test-library:
+    build: .
+    entrypoint:
+      "/test/entrypoint.sh"
+
+    environment:
+      FIRESTORE_EMULATOR_HOST: emu:8080
+      FIREBASE_DATABASE_EMULATOR_HOST: emu:9000
+      TENANT: test
+      SYNC_PATH: _sync_queue
+      KAFKA_URL: ${KAFKA_URL}
+      KAFKA_SECURITY_PROTOCOL: ${KAFKA_SECURITY_PROTOCOL}
+      KAFKA_SASL_MECHANISM: ${KAFKA_SASL_MECHANISM}
+      KAFKA_SASL_USERNAME: ${KAFKA_SASL_USERNAME}
+      KAFKA_SASL_PASSWORD: ${KAFKA_SASL_PASSWORD}
+
+volumes:
+  # not required, but nice because it caches downloaded emulator binaries
+  firebase:
