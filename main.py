@@ -16,15 +16,15 @@
 # specific language governing permissions and limitations
 # under the License.
 
-from aet.logger import get_logger
 
-
-def run_exporter():
+def run_exporter(data, context):
     from .exporter import ExportManager
     man = ExportManager()
     man.run()
 
 
-def test_signal():
+def test_signal(data, context):
+    from aet.logger import get_logger
     LOG = get_logger('test-signal')
-    LOG.debug(f'')
+    LOG.debug(f'data: {data} | context: {context}')
+    print(f'data: {data} | context: {context}')
