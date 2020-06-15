@@ -1,4 +1,4 @@
-# Copyright (C) 2019 by eHealth Africa : http://www.eHealthAfrica.org
+# Copyright (C) 2020 by eHealth Africa : http://www.eHealthAfrica.org
 #
 # See the NOTICE file distributed with this work for additional information
 # regarding copyright ownership.
@@ -30,7 +30,9 @@ def run_exporter(data, context):
 
 
 def rtdb_writer(data, context):
-    LOG.debug(f'triggered from {data}: {context}')
+    LOG.debug(f'data: {data} {context}')
+    LOG.debug(f'context: {context}')
+    LOG.debug(f'{dir(context)}')
     from cloud import fb_move
     global _writer
     if not _writer:
