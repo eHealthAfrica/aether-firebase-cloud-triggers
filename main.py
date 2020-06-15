@@ -30,11 +30,15 @@ def run_exporter(data, context):
 
 
 def rtdb_writer(data, context):
+    LOG.debug(f'triggered from {data}: {context}')
     from cloud import fb_move
     global _writer
     if not _writer:
         _writer = fb_move._make_wildcard_writer()
-    _writer(data, context)
+    try:
+        _writer(data, context)
+    except Exception as err:
+        LOG.error(err)
 
 
 def test_signal(data, context):

@@ -44,6 +44,7 @@ def __context_params(context):
 def _init_global_firebase():
     global RTDB
     if not RTDB:
+        LOG.debug('initializing RTDB connection')
         app = firebase_admin.initialize_app(options={
             'databaseURL': CONF.get('FIREBASE_URL')
         })
@@ -56,6 +57,7 @@ def _make_wildcard_writer():
     # like:
     # /some/path/{doc_type}/{maybe_an_id}
     # format specified in CONF.path_template
+    LOG.debug('Creating writer (wildcard)')
     target_path = CONF.get('PATH_TEMPLATE')
     sync_path = CONF.get('SYNC_PATH')
     _init_global_firebase()
@@ -69,4 +71,5 @@ def _make_wildcard_writer():
         ref = RTDB.reference(target)
         ref.set(json.dumps(doc))
 
+    LOG.debug('writer ready')
     return _writer
