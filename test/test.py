@@ -22,9 +22,9 @@ import pytest
 
 from .fixtures import *  # noqa
 # from .aether_functions import *  # noqa
-from .app.fb_utils import halve_iterable, sanitize_topic
-from .app.config import get_kafka_config, kafka_admin_uses, get_kafka_admin_config
-from .app.hash import make_hash
+from .app.cloud.fb_utils import halve_iterable, sanitize_topic
+from .app.cloud.config import get_kafka_config, kafka_admin_uses, get_kafka_admin_config
+from .app.cloud.hash import make_hash
 
 
 @pytest.mark.unit

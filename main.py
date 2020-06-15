@@ -24,13 +24,13 @@ _writer = None
 
 
 def run_exporter(data, context):
-    from .exporter import ExportManager
+    from cloud.exporter import ExportManager
     man = ExportManager()
     man.run()
 
 
 def rtdb_writer(data, context):
-    from . import fb_move
+    from cloud import fb_move
     global _writer
     if not _writer:
         _writer = fb_move._make_wildcard_writer()
@@ -38,4 +38,6 @@ def rtdb_writer(data, context):
 
 
 def test_signal(data, context):
+    from cloud import fb_move
+    print(dir(fb_move))
     LOG.debug(f'data: {data} | context: {context}')

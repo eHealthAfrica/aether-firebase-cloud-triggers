@@ -53,8 +53,8 @@ from aet.logger import get_logger
 
 from aether.python.avro import generation
 
-from .app import config
-from .app import fb_utils
+from .app.cloud import config
+from .app.cloud import fb_utils
 
 LOG = get_logger('FIXTURE')
 

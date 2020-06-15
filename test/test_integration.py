@@ -39,8 +39,8 @@ from . import (  # noqa
     TEST_DOC_COUNT
 )
 
-from .app import exporter
-from .app.fb_utils import (  # noqa
+from .app.cloud import exporter
+from .app.cloud.fb_utils import (  # noqa
     RTDBTarget,
     InputManager,
     InputSet,
@@ -59,7 +59,7 @@ from .app.fb_utils import (  # noqa
     remove_from_quarantine,
     count_quarantined
 )
-from .app import kafka_utils
+from .app.cloud import kafka_utils
 
 
 @pytest.fixture(scope='session')
