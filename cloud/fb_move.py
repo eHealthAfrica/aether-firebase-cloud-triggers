@@ -51,6 +51,23 @@ def _init_global_firebase():
         RTDB = fb_utils.RTDB(app)
 
 
+def _path_grabber(target_path):
+    import re
+    matcher = re.compile(r'''\{(.+?)}''')
+    target_parts = target_path.split('/')[::-1]
+
+    def _fn(path):
+        res = {}
+        path_parts = path.split('/')[::-1]
+        pairs = zip(target_parts, path_parts)
+        for t, p in pairs:
+            if matcher.match(t):
+                k = matcher.search(t).group(1)
+                res[k] = p
+        return res
+    return _fn
+
+
 def _make_wildcard_writer():
     # requires `doc_type` etc be passed in as a wildcard
     # then picked up from the context.params dict
@@ -58,14 +75,16 @@ def _make_wildcard_writer():
     # /some/path/{doc_type}/{maybe_an_id}
     # format specified in CONF.path_template
     LOG.debug('Creating writer (wildcard)')
+    subscribe_pattern = CONF.get('SUBSCRIBE_PATTERN')
     target_path = CONF.get('PATH_TEMPLATE')
     sync_path = CONF.get('SYNC_PATH')
     _init_global_firebase()
+    path_resolver = _path_grabber(subscribe_pattern)
 
     def _writer(data, context):
         LOG.debug(f'change on {context.resource}')
         doc = data['value']
-        params = __context_params(context)
+        params = path_resolver(context.resource)
         params['sync_path'] = sync_path
         target = target_path.format(**params)
         ref = RTDB.reference(target)

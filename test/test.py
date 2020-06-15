@@ -23,6 +23,7 @@ import pytest
 from .fixtures import *  # noqa
 # from .aether_functions import *  # noqa
 from .app.cloud.fb_utils import halve_iterable, sanitize_topic
+from .app.cloud import fb_move
 from .app.cloud.config import get_kafka_config, kafka_admin_uses, get_kafka_admin_config
 from .app.cloud.hash import make_hash
 
@@ -44,6 +45,15 @@ def test__kafka_config():
 @pytest.mark.unit
 def test__sanitize_topic_name(test, expected):
     assert(sanitize_topic(test) == expected)
+
+
+@pytest.mark.unit
+def test__path_resolution():
+    resolver = fb_move._path_grabber('/{deployment_id}/data/{doc_type}/{doc_id}')
+    res = resolver('projects/covid19-logiak/databases/(default)/documents/293cfe55-d45d-4ceb-a4c0-d01623e4850b/data/patient/a7b0f5db-d2b8-4356-a33d-c0ed62238a9f')  # noqa
+    assert(res['deployment_id'] == '293cfe55-d45d-4ceb-a4c0-d01623e4850b')
+    assert(res['doc_type'] == 'patient')
+    assert(res['doc_id'] == 'a7b0f5db-d2b8-4356-a33d-c0ed62238a9f')
 
 
 @pytest.mark.unit
