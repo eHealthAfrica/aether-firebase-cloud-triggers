@@ -16,6 +16,12 @@
 # specific language governing permissions and limitations
 # under the License.
 
+from aet.logger import get_logger
+
+LOG = get_logger('fn')
+
+_writer = None
+
 
 def run_exporter(data, context):
     from .exporter import ExportManager
@@ -23,8 +29,13 @@ def run_exporter(data, context):
     man.run()
 
 
+def rtdb_writer(data, context):
+    from . import fb_move
+    global _writer
+    if not _writer:
+        _writer = fb_move._make_wildcard_writer()
+    _writer(data, context)
+
+
 def test_signal(data, context):
-    from aet.logger import get_logger
-    LOG = get_logger('test-signal')
     LOG.debug(f'data: {data} | context: {context}')
-    print(f'data: {data} | context: {context}')

@@ -43,7 +43,7 @@ CONF = get_function_config()
 LOG = get_logger('Utils')
 
 
-_SYNC_QUEUE = CONF.get('sync_path')
+_SYNC_QUEUE = CONF.get('SYNC_PATH')
 _NORMAL_CACHE = '_cached'
 _QUARANTINE_CACHE = '_quarantined'
 
