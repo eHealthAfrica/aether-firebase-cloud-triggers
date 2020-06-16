@@ -96,7 +96,10 @@ def _make_doc_getter(source: DBType, rtdb, use_rtdb_delta=False):
         return None
 
     def _delta_getter(data, context):
-        return data['delta']
+        try:
+            return json.loads(data['delta'])
+        except json.JSONDecodeError:
+            return data['delta']
 
     if source == DBType.CFS:
         return _value_getter
