@@ -29,6 +29,22 @@ def run_exporter(data, context):
     man.run()
 
 
+def cfs_export_rtdb(data, context):
+    pass
+
+
+def rtdb_export_rtdb(data, context):
+    pass
+
+
+def cfs_sync_rtdb(data, context):
+    pass
+
+
+def rtdb_sync_rtdb(data, context):
+    pass
+
+
 def rtdb_writer(data, context):
     LOG.debug(f'data: {data} {context}')
     LOG.debug(f'context: {context}')
@@ -44,6 +60,9 @@ def rtdb_writer(data, context):
 
 
 def test_signal(data, context):
-    from cloud import fb_move
-    print(dir(fb_move))
-    LOG.debug(f'data: {data} | context: {context}')
+    LOG.debug(f'{data}')
+    LOG.debug(f'{context}')
+    LOG.debug(f'{[i for i in data]}')
+    LOG.debug(f'{[i for i in data.keys()]}')
+    for k in data.keys():
+        LOG.debug(f'{k}: {data[k]}')

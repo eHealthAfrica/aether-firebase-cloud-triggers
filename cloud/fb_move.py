@@ -31,16 +31,6 @@ CONF = get_function_config()
 RTDB = None
 
 
-def __context_params(context):
-    res = {}
-    for i in context.params:
-        try:
-            res[i] = getattr(context.params, i)
-        except AttributeError:
-            return None
-    return res
-
-
 def _init_global_firebase():
     global RTDB
     if not RTDB:
@@ -51,10 +41,10 @@ def _init_global_firebase():
         RTDB = fb_utils.RTDB(app)
 
 
-def _path_grabber(target_path):
+def _path_grabber(source_path):
     import re
     matcher = re.compile(r'''\{(.+?)}''')
-    target_parts = target_path.split('/')[::-1]
+    target_parts = source_path.split('/')[::-1]
 
     def _fn(path):
         res = {}
