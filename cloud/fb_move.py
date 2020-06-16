@@ -130,7 +130,10 @@ def _make_wildcard_writer(source: DBType, mode: Mode):
         params['sync_path'] = sync_path
         target = target_path.format(**params)
         ref = RTDB.reference(target)
-        ref.set(json.dumps(doc))
+        try:
+            ref.set(json.dumps(doc))
+        except TypeError:
+            ref.set(doc)
 
     LOG.debug('writer ready')
     return _writer
