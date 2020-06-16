@@ -18,8 +18,8 @@
 # specific language governing permissions and limitations
 # under the License.
 
-from time import sleep
-from uuid import uuid4
+from time import sleep  # noqa
+from uuid import uuid4  # noqa
 
 
 import pytest
@@ -39,7 +39,14 @@ from . import (  # noqa
     TEST_DOC_COUNT
 )
 
-from .app.cloud import exporter
+from .app.cloud import exporter  # noqa
+from .app.cloud.fb_move import (  # noqa
+    requires_sync,
+    _make_wildcard_writer,
+    _make_doc_getter,
+    DBType,
+    Mode
+)
 from .app.cloud.fb_utils import (  # noqa
     RTDBTarget,
     InputManager,
@@ -59,12 +66,43 @@ from .app.cloud.fb_utils import (  # noqa
     remove_from_quarantine,
     count_quarantined
 )
-from .app.cloud import kafka_utils
+from .app.cloud import kafka_utils  # noqa
+
+
+class FakeContext:
+
+    def __init__(self):
+        self.resource = '/some/refs/_path/to/a/doc_id'
 
 
 @pytest.fixture(scope='session')
 def TestRTDBTarget(rtdb):  # noqa
     yield RTDBTarget('test_project', rtdb)
+
+
+@pytest.mark.integration
+def test__requires_sync(rtdb):  # noqa
+    _type = 'TEST1'
+    _id = '1'
+    path = f'nested/{_type}'
+    msg = {'a': 'message'}
+    assert(requires_sync(_id, _type, msg, rtdb) is True)
+    assert(requires_sync(_id, _type, msg, rtdb) is False)
+
+    path = f'_hash/{_type}/{_id}'
+    rtdb.reference(path).delete()
+
+
+@pytest.mark.parametrize('source,data,expected,use_delta', [
+    (DBType.CFS, {'value': 'a'}, 'a', None),
+    (DBType.RTDB, {'value': 'a', 'delta': 'b'}, 'b', True),
+    (DBType.RTDB, {}, None, False)  # no matching doc
+])
+@pytest.mark.integration
+def test__doc_getter(rtdb, source, data, expected, use_delta):  # noqa
+    context = FakeContext()
+    _fn = _make_doc_getter(source, rtdb, use_delta)
+    assert(_fn(data, context) == expected)
 
 
 @pytest.mark.integration

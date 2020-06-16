@@ -30,29 +30,35 @@ def run_exporter(data, context):
 
 
 def cfs_export_rtdb(data, context):
-    pass
+    from cloud.fb_move import Mode, DBType, fb_move  # noqa
+    return rtdb_writer(data, context, source=DBType.CFS, mode=Mode.PUSH)
 
 
 def rtdb_export_rtdb(data, context):
-    pass
+    from cloud.fb_move import Mode, DBType, fb_move  # noqa
+    return rtdb_writer(data, context, source=DBType.RTDB, mode=Mode.PUSH)
 
 
 def cfs_sync_rtdb(data, context):
-    pass
+    from cloud.fb_move import Mode, DBType, fb_move  # noqa
+    return rtdb_writer(data, context, source=DBType.CFS, mode=Mode.SYNC)
 
 
 def rtdb_sync_rtdb(data, context):
-    pass
+    from cloud.fb_move import Mode, DBType, fb_move  # noqa
+    return rtdb_writer(data, context, source=DBType.RTDB, mode=Mode.SYNC)
 
 
-def rtdb_writer(data, context):
-    LOG.debug(f'data: {data} {context}')
-    LOG.debug(f'context: {context}')
-    LOG.debug(f'{dir(context)}')
+def rtdb_writer(
+    data,
+    context,
+    source=None,
+    mode=None
+):
     from cloud import fb_move
     global _writer
     if not _writer:
-        _writer = fb_move._make_wildcard_writer()
+        _writer = fb_move._make_wildcard_writer(source, mode)
     try:
         _writer(data, context)
     except Exception as err:

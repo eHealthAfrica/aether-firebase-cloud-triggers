@@ -17,18 +17,30 @@
 # under the License.
 
 
+from enum import Enum
 import json
 
 import firebase_admin
 
-from aet.logger import get_logger
 
+from aet.logger import get_logger
 from .config import get_function_config
+from .hash import make_hash
 from . import fb_utils
 
 LOG = get_logger('mv')
 CONF = get_function_config()
 RTDB = None
+
+
+class DBType(Enum):
+    RTDB = 0
+    CFS = 1
+
+
+class Mode(Enum):
+    SYNC = 0
+    PUSH = 1
 
 
 def _init_global_firebase():
@@ -58,7 +70,42 @@ def _path_grabber(source_path):
     return _fn
 
 
-def _make_wildcard_writer():
+def requires_sync(doc_id, doc_type, doc, rtdb):
+    base = CONF.get('HASH_PATH', '_hash')
+    path = f'{base}/{doc_type}/{doc_id}'
+    ref = rtdb.reference(path)
+    _hash = make_hash(doc_type, doc)
+    old_hash = ref.get()
+    if not old_hash or old_hash != _hash:
+        ref.set(_hash)
+        return True
+    return False
+
+
+def _make_doc_getter(source: DBType, rtdb, use_rtdb_delta=False):
+
+    def _value_getter(data, context):
+        return data['value']
+
+    def _reference_getter(data, context):
+        full_path = context.resource
+        _path = full_path.split('/refs/')[1]
+        res = rtdb.reference(_path).get()
+        if res:
+            return res.to_dict()
+        return None
+
+    def _delta_getter(data, context):
+        return data['delta']
+
+    if source == DBType.CFS:
+        return _value_getter
+    elif use_rtdb_delta:
+        return _delta_getter
+    return _reference_getter
+
+
+def _make_wildcard_writer(source: DBType, mode: Mode):
     # requires `doc_type` etc be passed in as a wildcard
     # then picked up from the context.params dict
     # like:
@@ -70,10 +117,12 @@ def _make_wildcard_writer():
     sync_path = CONF.get('SYNC_PATH')
     _init_global_firebase()
     path_resolver = _path_grabber(subscribe_pattern)
+    use_rtdb_delta = CONF.get('USE_RTDB_DELTA')
+    _doc_getter = _make_doc_getter(source, RTDB, use_rtdb_delta)
 
     def _writer(data, context):
         LOG.debug(f'change on {context.resource}')
-        doc = data['value']
+        doc = _doc_getter(data, context)
         params = path_resolver(context.resource)
         params['sync_path'] = sync_path
         target = target_path.format(**params)
