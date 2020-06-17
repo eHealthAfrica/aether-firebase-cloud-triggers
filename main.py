@@ -28,6 +28,20 @@ def run_exporter(data, context):
     man = ExportManager()
     man.run()
 
+# Required ENVs.
+
+# SUBSCRIBE_PATTERN
+# where the function will listen, including the wildcards like
+# Same as provided to GCP in the function def
+# {deployment_id}/data/{doc_type}/{doc_id}
+
+# PATH_TEMPLATE
+# where the function will write in RTDB, including wildcards from subscribe pattern
+# /{deployment_id}/_sync_queue/{doc_type}/documents/{doc_id}
+
+# FIREBASE_URL
+# https://{app_name}.firebaseio.com/
+
 
 def cfs_export_rtdb(data, context):
     from cloud.fb_move import Mode, DBType  # noqa

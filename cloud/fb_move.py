@@ -91,6 +91,7 @@ def _make_doc_getter(source: DBType, rtdb, use_rtdb_delta=False):
             LOG.debug(var)
             return {}
         except AttributeError as aer:
+            LOG.debug(context)
             LOG.debug(aer)
             return data['value']
 
