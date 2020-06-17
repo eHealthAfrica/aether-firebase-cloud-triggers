@@ -31,6 +31,8 @@ from . import fb_utils
 LOG = get_logger('mv')
 CONF = get_function_config()
 RTDB = None
+CFS = None
+APP = None
 
 
 class DBType(Enum):
@@ -45,12 +47,25 @@ class Mode(Enum):
 
 def _init_global_firebase():
     global RTDB
+    global APP
     if not RTDB:
         LOG.debug('initializing RTDB connection')
-        app = firebase_admin.initialize_app(options={
-            'databaseURL': CONF.get('FIREBASE_URL')
-        })
-        RTDB = fb_utils.RTDB(app)
+        if not APP:
+            APP = firebase_admin.initialize_app(options={
+                'databaseURL': CONF.get('FIREBASE_URL')
+            })
+        RTDB = fb_utils.RTDB(APP)
+
+
+def __init_global_cfs():
+    global CFS
+    global APP
+    if not CFS:
+        if not APP:
+            APP = firebase_admin.initialize_app(options={
+                'databaseURL': CONF.get('FIREBASE_URL')
+            })
+        CFS = fb_utils.Firestore(APP)
 
 
 def _path_grabber(source_path):
@@ -83,17 +98,13 @@ def requires_sync(doc_id, doc_type, doc, rtdb):
 
 
 def _make_doc_getter(source: DBType, rtdb, use_rtdb_delta=False):
+    if source is DBType.CFS:
+        __init_global_cfs()
 
     def _value_getter(data, context):
-        try:
-            return data['value'].to_dict()
-        except ValueError as var:
-            LOG.debug(var)
-            return {}
-        except AttributeError as aer:
-            LOG.debug(context)
-            LOG.debug(aer)
-            return data['value']
+        full_path = context.resource
+        _path = full_path.split('/documents/')[1]
+        return CFS.get(_path)
 
     def _reference_getter(data, context):
         full_path = context.resource
