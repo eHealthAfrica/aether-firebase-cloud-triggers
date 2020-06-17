@@ -85,7 +85,12 @@ def requires_sync(doc_id, doc_type, doc, rtdb):
 def _make_doc_getter(source: DBType, rtdb, use_rtdb_delta=False):
 
     def _value_getter(data, context):
-        return data['value']
+        try:
+            return data['value'].to_dict()
+        except ValueError:
+            return {}
+        except AttributeError:
+            return data['value']
 
     def _reference_getter(data, context):
         full_path = context.resource
