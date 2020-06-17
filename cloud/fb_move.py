@@ -104,7 +104,7 @@ def _make_doc_getter(source: DBType, rtdb, use_rtdb_delta=False):
     def _value_getter(data, context):
         full_path = context.resource
         _path = full_path.split('/documents/')[1]
-        return CFS.get(_path)
+        return CFS.read(_path)
 
     def _reference_getter(data, context):
         full_path = context.resource
