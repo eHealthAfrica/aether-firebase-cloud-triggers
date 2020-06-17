@@ -164,7 +164,7 @@ class Firestore(object):
         else:
             return [i.to_dict() for i in self.ref(path, _id).get()]
 
-    def ref(self, path, _id=None, full_path=None):
+    def ref(self, path=None, _id=None, full_path=None):
         if full_path:
             return self.cfs.document(full_path)
         if _id:
