@@ -156,9 +156,9 @@ class Firestore(object):
         elif instance:
             self.cfs = instance
 
-    def read(self, path=None, _id=None, full_path=None):
-        if full_path:
-            return self.ref(full_path=full_path)
+    def read(self, path=None, _id=None, doc_path=None):
+        if doc_path:
+            return self.ref(full_path=doc_path).get()
         if _id:
             return self.ref(path, _id).get().to_dict()
         else:
