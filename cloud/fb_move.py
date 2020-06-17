@@ -87,9 +87,11 @@ def _make_doc_getter(source: DBType, rtdb, use_rtdb_delta=False):
     def _value_getter(data, context):
         try:
             return data['value'].to_dict()
-        except ValueError:
+        except ValueError as var:
+            LOG.debug(var)
             return {}
-        except AttributeError:
+        except AttributeError as aer:
+            LOG.debug(aer)
             return data['value']
 
     def _reference_getter(data, context):
