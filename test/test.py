@@ -118,10 +118,9 @@ def test__coersce_to_schema():
     doc = json.loads(LOGIAK_ENTITY)
     _schema_dict = json.loads(LOGIAK_SCHEMA)
     _schema = spavro.schema.parse(LOGIAK_SCHEMA)
+    opts = {'NULL_VALUE': 'novalue'}
     try:
-        doc = coersce_or_fail(doc, _schema, _schema_dict)
-        LOG.debug(json.dumps(doc, indent=2))
-        assert(True)
+        doc = coersce_or_fail(doc, _schema, _schema_dict, opts)
     except ValueError:
         doc = coersce(doc, _schema_dict)
         result = avro_tools.AvroValidator(

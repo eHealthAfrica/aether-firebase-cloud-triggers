@@ -46,7 +46,7 @@ def primary_type(block) -> Tuple[bool, str]:  # Tuple[nullable, avro type]
     _type = block.get('type')
     if not isinstance(_type, list):
         return (False, _type)
-    elif _type[0] != 'null' or len(_type == 0):
+    elif _type[0] != 'null' or len(_type) == 0:
         return (False, _type[0])
     return (True, _type[1])
 
@@ -72,7 +72,7 @@ def coersce(obj, schema_dict, opts=None):
     for name, _nullable, xf in transforms:
         val = obj.get(name)
         if val is not None:
-            if val == opts.get('NULL_VALUE', "") and _nullable:
+            if val in [opts.get('NULL_VALUE', ""), ""] and _nullable:
                 continue
             res[name] = xf(val)
     return res
