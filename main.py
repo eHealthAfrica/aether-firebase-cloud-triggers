@@ -23,10 +23,38 @@ LOG = get_logger('fn')
 _writer = None
 
 
+# Required ENVs
+'''
+KAFKA_URL
+KAFKA_SECURITY_PROTOCOL
+KAFKA_SASL_MECHANISM
+KAFKA_SASL_USERNAME
+KAFKA_SASL_PASSWORD
+FIREBASE_URL (string) URL of the RTDB instance
+SYNC_PATH (string) base path for the SYNC storage structure
+    like: {sync_path}/{doc_type}/{documents, schema, options}
+TENANT (string) name of the tenant, used to prepend the Kafka topics
+    like: {TENANT}.logiak.{doc_type}
+'''
+
+# optional
+'''
+COERSCE_ON_FAILURE (present) indicates whether we should try to cast values of non-compliant
+    messages using the data types indicated in the schema
+NULL_VALUE (string)  a value used in the source message to indicate None like "novalue"
+MAX_KAFKA_MESSAGE_SIZE (int) maximum size for a single kafka message
+'''
+
+
 def run_exporter(data, context):
-    from cloud.exporter import ExportManager
-    man = ExportManager()
-    man.run()
+    try:
+        from cloud.exporter import ExportManager
+        man = ExportManager()
+        man.run()
+    except Exception as err:
+        LOG.critical('Export failed!')
+        LOG.critical(err)
+
 
 # Required ENVs.
 
@@ -41,6 +69,11 @@ def run_exporter(data, context):
 
 # FIREBASE_URL
 # https://{app_name}.firebaseio.com/
+
+# optional
+'''
+HASH_PATH (string) base path for hashes -> ({hash_path}/{doc_type}/{doc_id}) like '_hash'
+'''
 
 
 def cfs_export_rtdb(data, context):

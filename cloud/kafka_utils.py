@@ -39,8 +39,11 @@ from .config import (
 )
 from . import fb_utils
 
-MAX_KAFKA_MESSAGE_SIZE = 100_000  # keep things reasonably sized, MAX is 2mb
+
 CONF = get_function_config()
+MAX_KAFKA_MESSAGE_SIZE = int(
+    CONF.get('MAX_KAFKA_MESSAGE_SIZE', 100_000))  # keep things reasonably sized, MAX is 2mb
+
 KAFKA_SECURITY = get_kafka_admin_config()
 KADMIN = get_admin_client(KAFKA_SECURITY)
 PRODUCER = get_producer(KAFKA_SECURITY)
