@@ -57,9 +57,11 @@ def _init_global_firebase():
         RTDB = fb_utils.RTDB(APP)
 
 
-def __init_global_cfs():
+def __init_global_cfs(cfs=None):
     global CFS
     global APP
+    if cfs:
+        CFS = cfs
     if not CFS:
         if not APP:
             APP = firebase_admin.initialize_app(options={
@@ -97,9 +99,9 @@ def requires_sync(doc_id, doc_type, doc, rtdb):
     return False
 
 
-def _make_doc_getter(source: DBType, rtdb, use_rtdb_delta=False):
+def _make_doc_getter(source: DBType, rtdb, use_rtdb_delta=False, cfs=None):
     if source is DBType.CFS:
-        __init_global_cfs()
+        __init_global_cfs(cfs)
 
     def _value_getter(data, context):
         full_path = context.resource

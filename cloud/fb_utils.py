@@ -37,6 +37,7 @@ import spavro.io
 from aether.python.avro import tools as avro_tools
 from aet.logger import get_logger
 
+from .schema_utils import coersce_or_fail
 from .config import get_function_config
 
 CONF = get_function_config()
@@ -63,6 +64,7 @@ class InputManager:
     def __init__(self, rtdb_instance: 'RTDBTarget'):
         self.rtdb = rtdb_instance
         self.schemas = {}
+        self.schema_dict = {}
 
     def _read_all(self):
         # even if there are no documents, we get a list of types
@@ -74,6 +76,7 @@ class InputManager:
         for _type, obj in _inputs.items():
             schema = obj.get('schema')
             self.schemas[_type] = spavro.schema.parse(schema)
+            self.schema_dict[_type] = json.loads(schema)
             docs = []
             # cached docs
             docs.extend(self._filter_good_objects(_type, self._checkout_cached(_type)))
@@ -117,14 +120,26 @@ class InputManager:
             if spavro.io.validate(self.schemas[_type], doc):
                 passed.append(doc)
             else:
-                failed.append(doc)
-                result = avro_tools.AvroValidator(
-                    schema=self.schemas[_type],
-                    datum=doc
-                )
-                for error in result.errors:
-                    err_msg = avro_tools.format_validation_error(error)
-                    LOG.error(f'Schema validation failed on type {_type}: {err_msg}')
+                try:
+                    if CONF.get('COERSCE_ON_FAILURE', False):
+                        # ValueError on failure
+                        passed.append(coersce_or_fail(
+                            doc,
+                            self.schemas[_type],
+                            self.schema_dict[_type],
+                            CONF
+                        ))
+                    else:
+                        raise ValueError('schema validation failed.')
+                except ValueError:
+                    failed.append(doc)
+                    result = avro_tools.AvroValidator(
+                        schema=self.schemas[_type],
+                        datum=doc
+                    )
+                    for error in result.errors:
+                        err_msg = avro_tools.format_validation_error(error)
+                        LOG.error(f'Schema validation failed on type {_type}: {err_msg}')
         cache_objects(_type, passed, self.rtdb)
         quarantine(_type, failed, self.rtdb)
         return passed

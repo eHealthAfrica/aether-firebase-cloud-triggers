@@ -18,14 +18,20 @@
 # specific language governing permissions and limitations
 # under the License.
 
+import json
 import pytest
+import spavro.schema
+
+from aether.python.avro import tools as avro_tools
 
 from .fixtures import *  # noqa
+from . import LOGIAK_SCHEMA, LOGIAK_ENTITY, LOG
 # from .aether_functions import *  # noqa
 from .app.cloud.fb_utils import halve_iterable, sanitize_topic
 from .app.cloud import fb_move
 from .app.cloud.config import get_kafka_config, kafka_admin_uses, get_kafka_admin_config
 from .app.cloud.hash import make_hash
+from .app.cloud.schema_utils import coersce, coersce_or_fail
 
 
 @pytest.mark.unit
@@ -105,3 +111,24 @@ def test__hash():
     assert(make_hash(_type_a, doc_a) != make_hash(_type_b, doc_a))
     assert(make_hash(_type_a, doc_a) == make_hash(_type_a, doc_b))
     assert(make_hash(_type_a, doc_a) != make_hash(_type_a, doc_c))
+
+
+@pytest.mark.unit
+def test__coersce_to_schema():
+    doc = json.loads(LOGIAK_ENTITY)
+    _schema_dict = json.loads(LOGIAK_SCHEMA)
+    _schema = spavro.schema.parse(LOGIAK_SCHEMA)
+    try:
+        doc = coersce_or_fail(doc, _schema, _schema_dict)
+        LOG.debug(json.dumps(doc, indent=2))
+        assert(True)
+    except ValueError:
+        doc = coersce(doc, _schema_dict)
+        result = avro_tools.AvroValidator(
+            schema=_schema,
+            datum=doc
+        )
+        LOG.debug(json.dumps(doc, indent=2))
+        for error in result.errors:
+            err_msg = avro_tools.format_validation_error(error)
+            LOG.error(f'Validation error: {err_msg}')

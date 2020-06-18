@@ -71,8 +71,12 @@ from .app.cloud import kafka_utils  # noqa
 
 class FakeContext:
 
-    def __init__(self):
-        self.resource = '/some/refs/_path/to/a/doc_id'
+    def __init__(self, res_path):
+        self.resource = res_path
+
+
+def _make_fake_context(path):
+    return FakeContext(path)
 
 
 @pytest.fixture(scope='session')
@@ -93,15 +97,15 @@ def test__requires_sync(rtdb):  # noqa
     rtdb.reference(path).delete()
 
 
-@pytest.mark.parametrize('source,data,expected,use_delta', [
-    (DBType.CFS, {'value': 'a'}, 'a', None),
-    (DBType.RTDB, {'value': 'a', 'delta': 'b'}, 'b', True),
-    (DBType.RTDB, {}, None, False)  # no matching doc
+@pytest.mark.parametrize('source,data,expected,use_delta,context_resource', [
+    (DBType.CFS, {'value': 'a'}, None, None, '/some/documents/_path/to/a/doc_id'),
+    (DBType.RTDB, {'value': 'a', 'delta': 'b'}, 'b', True, '/some/refs/_path/to/a/doc_id'),
+    (DBType.RTDB, {}, None, False, '/some/refs/_path/to/a/doc_id')  # no matching doc
 ])
 @pytest.mark.integration
-def test__doc_getter(rtdb, source, data, expected, use_delta):  # noqa
-    context = FakeContext()
-    _fn = _make_doc_getter(source, rtdb, use_delta)
+def test__doc_getter(rtdb, source, data, expected, use_delta, cfs, context_resource):  # noqa
+    context = _make_fake_context(context_resource)
+    _fn = _make_doc_getter(source, rtdb, use_delta, cfs)
     assert(_fn(data, context) == expected)
 
 
