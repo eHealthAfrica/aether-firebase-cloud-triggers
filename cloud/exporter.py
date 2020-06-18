@@ -31,7 +31,7 @@ from . import kafka_utils
 _logger = get_logger('EXPORT')
 
 CONF = get_function_config()
-RTDB = None
+RTDB: fb_utils.RTDBTarget = None
 
 
 class ExportManager():
@@ -55,7 +55,7 @@ class ExportManager():
             app = firebase_admin.initialize_app(options={
                 'databaseURL': CONF.get('FIREBASE_URL')
             })
-            RTDB = fb_utils.RTDB(app)
+            RTDB = fb_utils.RTDBTarget('', fb_utils.RTDB(app))
 
     def run(self):
         _logger.info('starting')
