@@ -118,7 +118,7 @@ def test__coersce_to_schema():
     doc = json.loads(LOGIAK_ENTITY)
     _schema_dict = json.loads(LOGIAK_SCHEMA)
     _schema = spavro.schema.parse(LOGIAK_SCHEMA)
-    opts = {'NULL_VALUE': 'novalue'}
+    opts = {'NULL_VALUE': 'novalue', 'ID_FIELD': 'uuid'}
     try:
         doc = coersce_or_fail(doc, _schema, _schema_dict, opts)
     except ValueError:

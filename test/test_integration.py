@@ -143,7 +143,13 @@ def test__crud_cfs(cfs):  # noqa
 def test__cache_operations(TestRTDBTarget):
     _type = 'TEST1'
     path = f'{_NORMAL_CACHE}/{_type}'
-    docs = [{'id': str(uuid4()), 'val': str(uuid4())} for x in range(100)]
+    docs = []
+    for x in range(100):
+        _id = str(uuid4())
+        docs.append((
+            _id,
+            {'id': _id, 'val': _id}
+        ))
     cache_objects(_type, docs, TestRTDBTarget)
     assert(sum(1 for _ in TestRTDBTarget.list(path)) == 100)
     assert(_type in list_cached_types(TestRTDBTarget))
@@ -158,7 +164,13 @@ def test__cache_operations(TestRTDBTarget):
 def test__quarantine_operations(TestRTDBTarget):
     _type = 'TEST2'
     path = f'{_QUARANTINE_CACHE}/{_type}'
-    docs = [{'id': str(uuid4()), 'val': str(uuid4())} for x in range(100)]
+    docs = []
+    for x in range(100):
+        _id = str(uuid4())
+        docs.append((
+            _id,
+            {'id': _id, 'val': _id}
+        ))
     quarantine(_type, docs, TestRTDBTarget)
     assert(count_quarantined(_type, TestRTDBTarget) == 100)
     assert(_type in list_quarantined_types(TestRTDBTarget))

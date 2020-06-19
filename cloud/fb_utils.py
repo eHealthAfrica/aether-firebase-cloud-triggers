@@ -22,6 +22,7 @@ from typing import (
     Any,
     Dict,
     List,
+    Tuple,
     Mapping
 )
 
@@ -34,7 +35,11 @@ import spavro.io
 from aether.python.avro import tools as avro_tools
 from aet.logger import get_logger
 
-from .schema_utils import coersce_or_fail
+from .schema_utils import (
+    add_id_field,
+    coersce_or_fail,
+    contains_id
+)
 from .config import get_function_config
 
 CONF = get_function_config()
@@ -49,7 +54,7 @@ _QUARANTINE_CACHE = '_quarantined'
 @dataclass
 class InputSet:
     name: str
-    docs: List[Any]
+    docs: List[Tuple[str, Any]]  # (_id, doc)
     options: Dict
     schema: Dict
 
@@ -62,6 +67,7 @@ class InputManager:
         self.rtdb = rtdb_instance
         self.schemas = {}
         self.schema_dict = {}
+        self.options = {}
 
     def _read_all(self):
         # even if there are no documents, we get a list of types
@@ -72,8 +78,12 @@ class InputManager:
         _inputs = self._read_all()
         for _type, obj in _inputs.items():
             schema = obj.get('schema')
-            self.schemas[_type] = spavro.schema.parse(schema)
-            self.schema_dict[_type] = json.loads(schema)
+            schema_dict = json.loads(schema)
+            self.options[_type] = obj.get('options', {})
+            if not contains_id(schema_dict):
+                schema_dict = add_id_field(schema_dict, self.options[_type] or CONF)
+            self.schemas[_type] = spavro.schema.parse(json.dumps(schema_dict))
+            self.schema_dict[_type] = schema_dict
             docs = []
             # cached docs
             docs.extend(self._filter_good_objects(_type, self._checkout_cached(_type)))
@@ -86,7 +96,7 @@ class InputManager:
                 schema=schema
             )
 
-    def _checkout_cached(self, _type):
+    def _checkout_cached(self, _type) -> List[Tuple[str, Any]]:
         path = f'{_NORMAL_CACHE}/{_type}'
         docs = []
 
@@ -95,41 +105,47 @@ class InputManager:
             try:
                 doc = self.rtdb.get(_id, path)
                 # match convention from sync cache...
-                docs.append([_id, json.dumps(doc)])
+                docs.append((_id, json.dumps(doc)))
                 self.rtdb.get(_id, path)
                 self.rtdb.remove(_id, path)
             except Exception as err:
                 LOG.debug(f'could not retrieve {_id} from {path}: {err}')
         return docs
 
-    def _prepare_docs(self, _type, _docs):
+    def _prepare_docs(self, _type, _docs) -> List[Tuple[str, Any]]:
         good_objects = self._filter_good_objects(_type, _docs)
         for _id, item in _docs:
             # delete from sync cache
             self._mark_copied(_type, _id)
         return good_objects
 
-    def _filter_good_objects(self, _type, docs) -> List[Any]:
-        passed = []
-        failed = []
+    def _filter_good_objects(self, _type, docs) -> List[Tuple[str, Any]]:
+        # -> [(_id, obj),...]
+        passed: List[Tuple[str, Any]] = []
+        failed: List[Tuple[str, Any]] = []
         for _id, _doc in docs:
             doc = json.loads(_doc)
             if spavro.io.validate(self.schemas[_type], doc):
-                passed.append(doc)
+                passed.append((_id, doc))
             else:
                 try:
                     if CONF.get('COERSCE_ON_FAILURE', False):
                         # ValueError on failure
-                        passed.append(coersce_or_fail(
-                            doc,
-                            self.schemas[_type],
-                            self.schema_dict[_type],
-                            CONF
-                        ))
+                        passed.append((
+                            _id,
+                            coersce_or_fail(
+                                doc,
+                                self.schemas[_type],
+                                self.schema_dict[_type],
+                                CONF
+                            )))
                     else:
                         raise ValueError('schema validation failed.')
                 except ValueError:
-                    failed.append(doc)
+                    failed.append((
+                        _id,
+                        doc
+                    ))
                     result = avro_tools.AvroValidator(
                         schema=self.schemas[_type],
                         datum=doc
@@ -238,17 +254,18 @@ class RTDBTarget(object):
 
 def _put(
     _type: str,
-    objects: List[Any],
+    objects: List[Tuple[str, Any]],
     rtdb_instance: RTDBTarget = None,
     _cache=_NORMAL_CACHE
 ):
     LOG.debug(f'Caching {len(objects)} objects')
     path = f'{_cache}/{_type}'
     try:
-        for obj in objects:
-            rtdb_instance.add(obj['id'], path, obj)
+        for _id, obj in objects:
+            rtdb_instance.add(_id, path, obj)
     except Exception as err:  # pragma: no cover
-        LOG.critical(f'Could not save failed objects to RTDB {str(err)}')
+        LOG.critical(f'Could not save objects to RTDB {str(err)}')
+        raise err
 
 
 def _get(_type: str, rtdb_instance: RTDBTarget = None, _cache=_NORMAL_CACHE) -> List[Any]:
@@ -288,7 +305,7 @@ def _list_types(
 
 
 # normal cache
-def cache_objects(_type: str, objects: List[Any], rtdb_instance: RTDBTarget = None):
+def cache_objects(_type: str, objects: List[Tuple[str, Any]], rtdb_instance: RTDBTarget = None):
     return _put(_type, objects, rtdb_instance, _NORMAL_CACHE)
 
 
@@ -310,7 +327,7 @@ def list_cached_types(rtdb_instance: RTDBTarget = None):
 
 
 # quarantine cache
-def quarantine(_type: str, objects: List[Any], rtdb_instance: RTDBTarget = None):
+def quarantine(_type: str, objects: List[Tuple[str, Any]], rtdb_instance: RTDBTarget = None):
     if objects:
         LOG.warning(f'Quarantine {len(objects)} objects')
         _put(_type, objects, rtdb_instance, _QUARANTINE_CACHE)

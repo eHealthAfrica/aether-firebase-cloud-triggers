@@ -51,6 +51,28 @@ def primary_type(block) -> Tuple[bool, str]:  # Tuple[nullable, avro type]
     return (True, _type[1])
 
 
+def contains_id(schema):
+    for field in schema.get('fields'):
+        if field.get('name') == 'id':
+            return True
+    return False
+
+
+def add_id_field(schema, opts=None):
+    if not opts or not opts.get('ID_FIELD'):
+        raise RuntimeError('must include a "ID_FIELD" directive for schemas with no field "id"')
+    source = opts.get('ID_FIELD')
+    schema['fields'].append(
+        {
+            'name': 'id',
+            'type': 'string',
+            'description':
+                f'automatically referenced ID for aether compatibility from field: {source}'
+        }
+    )
+    return schema
+
+
 def xf_iter(schema):
     for field in schema.get('fields', {}):
         _nullable, _type = primary_type(field)
@@ -60,7 +82,7 @@ def xf_iter(schema):
 def coersce_or_fail(obj, schema, schema_dict, opts=None):
     doc = coersce(obj, schema_dict, opts)
     if not spavro.io.validate(schema, doc):
-        raise ValueError()
+        raise ValueError('schema validation failed')
     return doc
 
 
@@ -75,4 +97,16 @@ def coersce(obj, schema_dict, opts=None):
             if val in [opts.get('NULL_VALUE', ""), ""] and _nullable:
                 continue
             res[name] = xf(val)
+    if 'id' not in res:
+        _alias = opts.get('ID_FIELD')
+        if not _alias:
+            raise RuntimeError(
+                'all entities must include a field named "id"'
+                ' or set the ID_FIELD directive'
+            )
+        _id_value = res.get(_alias)
+        if not _id_value:
+            raise RuntimeError('ID field {_alias} does not contain a value')
+        res['id'] = _id_value
+
     return res
