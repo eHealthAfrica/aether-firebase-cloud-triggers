@@ -79,8 +79,8 @@ class InputManager:
     def get_inputs(self) -> List[InputSet]:
         _inputs = self._read_all()
         for _type, obj in _inputs.items():
-            schema = obj.get('schema')
-            schema_dict = json.loads(schema)
+            schema_str = obj.get('schema')
+            schema_dict = json.loads(schema_str)
             self.options[_type] = obj.get('options', {})
             if not contains_id(schema_dict):
                 LOG.debug(f'schema for type {_type} lacks and "id" field')
@@ -90,9 +90,11 @@ class InputManager:
                         f'type {_type} requires an "ID_FIELD" directive as it has no field "id"')
                     del self.options[_type]
                     continue  # cannot process this type
+                # updated schema
                 schema_dict = add_id_field(schema_dict, alias)
+                schema_str = json.dumps(schema_dict)
                 LOG.debug(f'"id" added to schema for {_type}')
-            self.schemas[_type] = spavro.schema.parse(json.dumps(schema_dict))
+            self.schemas[_type] = spavro.schema.parse(schema_str)
             self.schema_dict[_type] = schema_dict
             docs = []
             # cached docs
@@ -103,7 +105,7 @@ class InputManager:
                 name=_type,
                 docs=docs,
                 options=self.options[_type],
-                schema=schema
+                schema=schema_str
             )
 
     def _checkout_cached(self, _type) -> List[Tuple[str, Any]]:
@@ -116,7 +118,6 @@ class InputManager:
                 doc = self.rtdb.get(_id, path)
                 # match convention from sync cache...
                 docs.append((_id, json.dumps(doc)))
-                self.rtdb.get(_id, path)
                 self.rtdb.remove(_id, path)
             except Exception as err:
                 LOG.debug(f'could not retrieve {_id} from {path}: {err}')
