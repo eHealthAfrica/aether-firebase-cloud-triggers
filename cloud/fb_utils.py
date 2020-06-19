@@ -79,6 +79,9 @@ class InputManager:
     def get_inputs(self) -> List[InputSet]:
         _inputs = self._read_all()
         for _type, obj in _inputs.items():
+            if not obj.get('documents'):
+                LOG.debug(f'No new documents for type: {_type}')
+                continue
             schema_str = obj.get('schema')
             schema_dict = json.loads(schema_str)
             self.options[_type] = obj.get('options', {})
