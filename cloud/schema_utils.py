@@ -80,17 +80,14 @@ def xf_iter(schema):
         yield(field.get('name'), _nullable, XF.get(_type, _identity))
 
 
-def coersce_or_fail(obj, schema, schema_dict, opts=None):
+def coersce_or_fail(obj, schema, schema_dict, opts):
     doc = coersce(obj, schema_dict, opts)
     if not spavro.io.validate(schema, doc):
         raise ValueError('schema validation failed')
     return doc
 
 
-def coersce(obj, schema_dict, opts=None):
-    LOG.debug(opts)
-    if not opts:
-        opts = {}
+def coersce(obj, schema_dict, opts):
     transforms = xf_iter(schema_dict)
     res = {}
     for name, _nullable, xf in transforms:

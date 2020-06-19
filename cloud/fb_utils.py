@@ -84,7 +84,7 @@ class InputManager:
                 alias = self.options[_type].get('ID_FIELD') or CONF.get('ID_FIELD', None)
                 if not alias:
                     LOG.error(
-                        f'type {_type}requires an "ID_FIELD" directive as it has no field "id"')
+                        f'type {_type} requires an "ID_FIELD" directive as it has no field "id"')
                     del self.options[_type]
                     continue  # cannot process this type
                 schema_dict = add_id_field(schema_dict, alias)
@@ -143,7 +143,7 @@ class InputManager:
                                 doc,
                                 self.schemas[_type],
                                 self.schema_dict[_type],
-                                CONF
+                                self.options[_type] or CONF
                             )))
                     else:
                         raise ValueError('schema validation failed.')
