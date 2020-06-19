@@ -58,16 +58,13 @@ def contains_id(schema):
     return False
 
 
-def add_id_field(schema, opts=None):
-    if not opts or not opts.get('ID_FIELD'):
-        raise RuntimeError('must include a "ID_FIELD" directive for schemas with no field "id"')
-    source = opts.get('ID_FIELD')
+def add_id_field(schema, alias):
     schema['fields'].append(
         {
             'name': 'id',
             'type': 'string',
             'description':
-                f'automatically referenced ID for aether compatibility from field: {source}'
+                f'automatically referenced ID for aether compatibility from field: {alias}'
         }
     )
     return schema

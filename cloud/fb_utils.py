@@ -81,7 +81,13 @@ class InputManager:
             schema_dict = json.loads(schema)
             self.options[_type] = obj.get('options', {})
             if not contains_id(schema_dict):
-                schema_dict = add_id_field(schema_dict, self.options[_type] or CONF)
+                alias = self.options[_type].get('ID_FIELD') or CONF.get('ID_FIELD', None)
+                if not alias:
+                    LOG.error(
+                        f'type {_type}requires an "ID_FIELD" directive as it has no field "id"')
+                    del self.options[_type]
+                    continue  # cannot process this type
+                schema_dict = add_id_field(schema_dict, alias)
             self.schemas[_type] = spavro.schema.parse(json.dumps(schema_dict))
             self.schema_dict[_type] = schema_dict
             docs = []
