@@ -39,6 +39,8 @@ TENANT (string) name of the tenant, used to prepend the Kafka topics
 
 # optional
 '''
+ID_FIELD (string) if the system does not have a field named "id", point to the field that contains
+    the UUID can also be set in the SYNC structure a {doc_type}/options/ID_FIELD
 COERSCE_ON_FAILURE (present) indicates whether we should try to cast values of non-compliant
     messages using the data types indicated in the schema
 NULL_VALUE (string)  a value used in the source message to indicate None like "novalue"
