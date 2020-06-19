@@ -21,6 +21,10 @@ from typing import Tuple
 
 import spavro.io
 
+from aet.logger import get_logger
+
+LOG = get_logger('schema')
+
 
 def _identity(x):
     return x
@@ -84,6 +88,7 @@ def coersce_or_fail(obj, schema, schema_dict, opts=None):
 
 
 def coersce(obj, schema_dict, opts=None):
+    LOG.debug(opts)
     if not opts:
         opts = {}
     transforms = xf_iter(schema_dict)
