@@ -31,6 +31,7 @@ KAFKA_SASL_MECHANISM
 KAFKA_SASL_USERNAME
 KAFKA_SASL_PASSWORD
 FIREBASE_URL (string) URL of the RTDB instance
+BASE_PATH (string) base path in RTDB instance
 SYNC_PATH (string) base path for the SYNC storage structure
     like: {sync_path}/{doc_type}/{documents, schema, options}
 TENANT (string) name of the tenant, used to prepend the Kafka topics

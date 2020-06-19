@@ -46,9 +46,11 @@ CONF = get_function_config()
 LOG = get_logger('Utils')
 
 
-_SYNC_QUEUE = CONF.get('SYNC_PATH')
-_NORMAL_CACHE = '_cached'
-_QUARANTINE_CACHE = '_quarantined'
+_BASE_PATH = CONF.get('BASE_PATH')
+_SYNC = CONF.get('SYNC_PATH') or '_sync_queue'
+_SYNC_QUEUE = f'{_BASE_PATH}/{_SYNC}'
+_NORMAL_CACHE = f'{_BASE_PATH}/_cached'
+_QUARANTINE_CACHE = f'{_BASE_PATH}/_quarantined'
 
 
 @dataclass
@@ -81,6 +83,7 @@ class InputManager:
             schema_dict = json.loads(schema)
             self.options[_type] = obj.get('options', {})
             if not contains_id(schema_dict):
+                LOG.debug(f'schema for type {_type} lacks and "id" field')
                 alias = self.options[_type].get('ID_FIELD') or CONF.get('ID_FIELD', None)
                 if not alias:
                     LOG.error(
@@ -88,6 +91,7 @@ class InputManager:
                     del self.options[_type]
                     continue  # cannot process this type
                 schema_dict = add_id_field(schema_dict, alias)
+                LOG.debug(f'"id" added to schema for {_type}')
             self.schemas[_type] = spavro.schema.parse(json.dumps(schema_dict))
             self.schema_dict[_type] = schema_dict
             docs = []
@@ -98,7 +102,7 @@ class InputManager:
             yield InputSet(
                 name=_type,
                 docs=docs,
-                options=obj.get('options'),
+                options=self.options[_type],
                 schema=schema
             )
 
