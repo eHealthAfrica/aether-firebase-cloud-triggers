@@ -21,10 +21,6 @@ from typing import Tuple
 
 import spavro.io
 
-from aet.logger import get_logger
-
-LOG = get_logger('schema')
-
 
 def _identity(x):
     return x
