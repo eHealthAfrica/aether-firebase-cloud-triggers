@@ -71,7 +71,7 @@ TEST_DOC_COUNT = 100
 project_name_rtdb = 'tenant:rtdb_test_app'
 project_name_cfs = 'cfstestapp'  # NO UNDERSCORES ALLOWED!
 rtdb_local = os.environ.get('FIREBASE_DATABASE_EMULATOR_HOST')
-rtdb_name = 'testdb'
+rtdb_name = 'local-development'
 rtdb_url = f'http://{rtdb_local}/'
 rtdb_ns = f'?ns={rtdb_name}'
 rtdb_fq = rtdb_url + rtdb_ns
