@@ -71,7 +71,7 @@ def publish(
 
 def _prepare_kafka(_type: str):
     TENANT = CONF.get('tenant')
-    topic = fb_utils.sanitize_topic(f'{TENANT}.logiak.{_type}')
+    topic = fb_utils.sanitize_topic(f'{TENANT}.fbs.{_type}')
     meta = KADMIN.list_topics(timeout=3)
     if topic in meta.topics.keys():
         return
@@ -131,7 +131,7 @@ def _send_kafka(objs: List[Any], schema, _type, max_size=MAX_KAFKA_MESSAGE_SIZE,
         raise ConnectionError('Could not connect to Kafka.')
     schema = parse(schema)
     TENANT = CONF.get('tenant')
-    topic = fb_utils.sanitize_topic(f'{TENANT}.logiak.{_type}')
+    topic = fb_utils.sanitize_topic(f'{TENANT}.fbs.{_type}')
     produce(objs, schema, topic, PRODUCER, callback=callback)
     return
 
