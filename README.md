@@ -11,6 +11,7 @@ There are conceptual groups of functions, collect and publish.
 
 #### Environment Variables
 
+```
 KAFKA_URL
 KAFKA_SECURITY_PROTOCOL
 KAFKA_SASL_MECHANISM
@@ -22,6 +23,7 @@ SYNC_PATH (string) base path for the SYNC storage structure
     like: /{base_path}{sync_path}/{doc_type}/{documents, schema, options}
 TENANT (string) name of the tenant, used to prepend the Kafka topics
     like: {TENANT}.fbs.{doc_type}
+```
 
 #### Operation
 
