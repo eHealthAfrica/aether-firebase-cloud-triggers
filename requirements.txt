@@ -1,5 +1,5 @@
-aether.consumer
-aether.python
-google-cloud-firestore
-firebase-admin
+aet.consumer>=3.9.1
+firebase_admin
+functions-framework>=1.0.0
+google.cloud
 requests

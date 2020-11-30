@@ -16,15 +16,13 @@
 # specific language governing permissions and limitations
 # under the License.
 
-from collections import namedtuple
 from dataclasses import dataclass
-from enum import Enum
-from multiprocessing import Queue
 import json
 from typing import (
     Any,
     Dict,
     List,
+    Tuple,
     Mapping
 )
 
@@ -37,21 +35,28 @@ import spavro.io
 from aether.python.avro import tools as avro_tools
 from aet.logger import get_logger
 
+from .schema_utils import (
+    add_id_field,
+    coersce_or_fail,
+    contains_id
+)
 from .config import get_function_config
 
 CONF = get_function_config()
 LOG = get_logger('Utils')
 
 
-_SYNC_QUEUE = CONF.get('sync_path')
-_NORMAL_CACHE = '_cached'
-_QUARANTINE_CACHE = '_quarantined'
+_BASE_PATH = CONF.get('BASE_PATH')
+_SYNC = CONF.get('SYNC_PATH') or '_sync_queue'
+_SYNC_QUEUE = f'{_BASE_PATH}/{_SYNC}'
+_NORMAL_CACHE = f'{_BASE_PATH}/_cached'
+_QUARANTINE_CACHE = f'{_BASE_PATH}/_quarantined'
 
 
 @dataclass
 class InputSet:
     name: str
-    docs: List[Any]
+    docs: List[Tuple[str, Any]]  # (_id, doc)
     options: Dict
     schema: Dict
 
@@ -63,6 +68,8 @@ class InputManager:
     def __init__(self, rtdb_instance: 'RTDBTarget'):
         self.rtdb = rtdb_instance
         self.schemas = {}
+        self.schema_dict = {}
+        self.options = {}
 
     def _read_all(self):
         # even if there are no documents, we get a list of types
@@ -71,9 +78,28 @@ class InputManager:
 
     def get_inputs(self) -> List[InputSet]:
         _inputs = self._read_all()
+        if not _inputs:
+            raise ValueError(f'Expected to find something at path {_SYNC_QUEUE}')
         for _type, obj in _inputs.items():
-            schema = obj.get('schema')
-            self.schemas[_type] = spavro.schema.parse(schema)
+            if not obj.get('documents'):
+                LOG.debug(f'No new documents for type: {_type}')
+            schema_str = obj.get('schema')
+            schema_dict = json.loads(schema_str)
+            self.options[_type] = obj.get('options', {})
+            if not contains_id(schema_dict):
+                LOG.debug(f'schema for type {_type} lacks and "id" field')
+                alias = self.options[_type].get('ID_FIELD') or CONF.get('ID_FIELD', None)
+                if not alias:
+                    LOG.error(
+                        f'type {_type} requires an "ID_FIELD" directive as it has no field "id"')
+                    del self.options[_type]
+                    continue  # cannot process this type
+                # updated schema
+                schema_dict = add_id_field(schema_dict, alias)
+                schema_str = json.dumps(schema_dict)
+                LOG.debug(f'"id" added to schema for {_type}')
+            self.schemas[_type] = spavro.schema.parse(schema_str)
+            self.schema_dict[_type] = schema_dict
             docs = []
             # cached docs
             docs.extend(self._filter_good_objects(_type, self._checkout_cached(_type)))
@@ -82,11 +108,11 @@ class InputManager:
             yield InputSet(
                 name=_type,
                 docs=docs,
-                options=obj.get('options'),
-                schema=schema
+                options=self.options[_type],
+                schema=schema_str
             )
 
-    def _checkout_cached(self, _type):
+    def _checkout_cached(self, _type) -> List[Tuple[str, Any]]:
         path = f'{_NORMAL_CACHE}/{_type}'
         docs = []
 
@@ -95,36 +121,53 @@ class InputManager:
             try:
                 doc = self.rtdb.get(_id, path)
                 # match convention from sync cache...
-                docs.append([_id, json.dumps(doc)])
-                self.rtdb.get(_id, path)
+                docs.append((_id, json.dumps(doc)))
                 self.rtdb.remove(_id, path)
             except Exception as err:
                 LOG.debug(f'could not retrieve {_id} from {path}: {err}')
         return docs
 
-    def _prepare_docs(self, _type, _docs):
+    def _prepare_docs(self, _type, _docs) -> List[Tuple[str, Any]]:
         good_objects = self._filter_good_objects(_type, _docs)
         for _id, item in _docs:
             # delete from sync cache
             self._mark_copied(_type, _id)
         return good_objects
 
-    def _filter_good_objects(self, _type, docs) -> List[Any]:
-        passed = []
-        failed = []
+    def _filter_good_objects(self, _type, docs) -> List[Tuple[str, Any]]:
+        # -> [(_id, obj),...]
+        passed: List[Tuple[str, Any]] = []
+        failed: List[Tuple[str, Any]] = []
         for _id, _doc in docs:
             doc = json.loads(_doc)
             if spavro.io.validate(self.schemas[_type], doc):
-                passed.append(doc)
+                passed.append((_id, doc))
             else:
-                failed.append(doc)
-                result = avro_tools.AvroValidator(
-                    schema=self.schemas[_type],
-                    datum=doc
-                )
-                for error in result.errors:
-                    err_msg = avro_tools.format_validation_error(error)
-                    LOG.error(f'Schema validation failed on type {_type}: {err_msg}')
+                try:
+                    if CONF.get('COERSCE_ON_FAILURE', False):
+                        # ValueError on failure
+                        passed.append((
+                            _id,
+                            coersce_or_fail(
+                                doc,
+                                self.schemas[_type],
+                                self.schema_dict[_type],
+                                self.options[_type] or CONF
+                            )))
+                    else:
+                        raise ValueError('schema validation failed.')
+                except ValueError:
+                    failed.append((
+                        _id,
+                        doc
+                    ))
+                    result = avro_tools.AvroValidator(
+                        schema=self.schemas[_type],
+                        datum=doc
+                    )
+                    for error in result.errors:
+                        err_msg = avro_tools.format_validation_error(error)
+                        LOG.error(f'Schema validation failed on type {_type}: {err_msg}')
         cache_objects(_type, passed, self.rtdb)
         quarantine(_type, failed, self.rtdb)
         return passed
@@ -156,13 +199,17 @@ class Firestore(object):
         elif instance:
             self.cfs = instance
 
-    def read(self, path, _id=None):
+    def read(self, path=None, _id=None, doc_path=None):
+        if doc_path:
+            return self.ref(full_path=doc_path).get()
         if _id:
             return self.ref(path, _id).get().to_dict()
         else:
             return [i.to_dict() for i in self.ref(path, _id).get()]
 
-    def ref(self, path, _id=None):
+    def ref(self, path=None, _id=None, full_path=None):
+        if full_path:
+            return self.cfs.document(full_path)
         if _id:
             path = f'{path}/{_id}'
             return self.cfs.document(path)
@@ -222,17 +269,18 @@ class RTDBTarget(object):
 
 def _put(
     _type: str,
-    objects: List[Any],
+    objects: List[Tuple[str, Any]],
     rtdb_instance: RTDBTarget = None,
     _cache=_NORMAL_CACHE
 ):
     LOG.debug(f'Caching {len(objects)} objects')
     path = f'{_cache}/{_type}'
     try:
-        for obj in objects:
-            rtdb_instance.add(obj['id'], path, obj)
+        for _id, obj in objects:
+            rtdb_instance.add(_id, path, obj)
     except Exception as err:  # pragma: no cover
-        LOG.critical(f'Could not save failed objects to RTDB {str(err)}')
+        LOG.critical(f'Could not save objects to RTDB {str(err)}')
+        raise err
 
 
 def _get(_type: str, rtdb_instance: RTDBTarget = None, _cache=_NORMAL_CACHE) -> List[Any]:
@@ -272,7 +320,7 @@ def _list_types(
 
 
 # normal cache
-def cache_objects(_type: str, objects: List[Any], rtdb_instance: RTDBTarget = None):
+def cache_objects(_type: str, objects: List[Tuple[str, Any]], rtdb_instance: RTDBTarget = None):
     return _put(_type, objects, rtdb_instance, _NORMAL_CACHE)
 
 
@@ -294,7 +342,7 @@ def list_cached_types(rtdb_instance: RTDBTarget = None):
 
 
 # quarantine cache
-def quarantine(_type: str, objects: List[Any], rtdb_instance: RTDBTarget = None):
+def quarantine(_type: str, objects: List[Tuple[str, Any]], rtdb_instance: RTDBTarget = None):
     if objects:
         LOG.warning(f'Quarantine {len(objects)} objects')
         _put(_type, objects, rtdb_instance, _QUARANTINE_CACHE)

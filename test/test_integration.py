@@ -18,8 +18,8 @@
 # specific language governing permissions and limitations
 # under the License.
 
-from time import sleep
-from uuid import uuid4
+from time import sleep  # noqa
+from uuid import uuid4  # noqa
 
 
 import pytest
@@ -39,8 +39,15 @@ from . import (  # noqa
     TEST_DOC_COUNT
 )
 
-from .app import exporter
-from .app.fb_utils import (  # noqa
+from .app.cloud import exporter  # noqa
+from .app.cloud.fb_move import (  # noqa
+    requires_sync,
+    _make_wildcard_writer,
+    _make_doc_getter,
+    DBType,
+    Mode
+)
+from .app.cloud.fb_utils import (  # noqa
     RTDBTarget,
     InputManager,
     InputSet,
@@ -59,12 +66,47 @@ from .app.fb_utils import (  # noqa
     remove_from_quarantine,
     count_quarantined
 )
-from .app import kafka_utils
+from .app.cloud import kafka_utils  # noqa
+
+
+class FakeContext:
+
+    def __init__(self, res_path):
+        self.resource = res_path
+
+
+def _make_fake_context(path):
+    return FakeContext(path)
 
 
 @pytest.fixture(scope='session')
 def TestRTDBTarget(rtdb):  # noqa
     yield RTDBTarget('test_project', rtdb)
+
+
+@pytest.mark.integration
+def test__requires_sync(rtdb):  # noqa
+    _type = 'TEST1'
+    _id = '1'
+    path = f'nested/{_type}'
+    msg = {'a': 'message'}
+    assert(requires_sync(_id, _type, msg, rtdb) is True)
+    assert(requires_sync(_id, _type, msg, rtdb) is False)
+
+    path = f'_hash/{_type}/{_id}'
+    rtdb.reference(path).delete()
+
+
+@pytest.mark.parametrize('source,data,expected,use_delta,context_resource', [
+    (DBType.CFS, {'value': 'a'}, None, None, '/some/documents/_path/to/a/doc_id'),
+    (DBType.RTDB, {'value': 'a', 'delta': 'b'}, 'b', True, '/some/refs/_path/to/a/doc_id'),
+    (DBType.RTDB, {}, None, False, '/some/refs/_path/to/a/doc_id')  # no matching doc
+])
+@pytest.mark.integration
+def test__doc_getter(rtdb, source, data, expected, use_delta, cfs, context_resource):  # noqa
+    context = _make_fake_context(context_resource)
+    _fn = _make_doc_getter(source, rtdb, use_delta, cfs)
+    assert(_fn(data, context) == expected)
 
 
 @pytest.mark.integration
@@ -101,7 +143,13 @@ def test__crud_cfs(cfs):  # noqa
 def test__cache_operations(TestRTDBTarget):
     _type = 'TEST1'
     path = f'{_NORMAL_CACHE}/{_type}'
-    docs = [{'id': str(uuid4()), 'val': str(uuid4())} for x in range(100)]
+    docs = []
+    for x in range(100):
+        _id = str(uuid4())
+        docs.append((
+            _id,
+            {'id': _id, 'val': _id}
+        ))
     cache_objects(_type, docs, TestRTDBTarget)
     assert(sum(1 for _ in TestRTDBTarget.list(path)) == 100)
     assert(_type in list_cached_types(TestRTDBTarget))
@@ -116,7 +164,13 @@ def test__cache_operations(TestRTDBTarget):
 def test__quarantine_operations(TestRTDBTarget):
     _type = 'TEST2'
     path = f'{_QUARANTINE_CACHE}/{_type}'
-    docs = [{'id': str(uuid4()), 'val': str(uuid4())} for x in range(100)]
+    docs = []
+    for x in range(100):
+        _id = str(uuid4())
+        docs.append((
+            _id,
+            {'id': _id, 'val': _id}
+        ))
     quarantine(_type, docs, TestRTDBTarget)
     assert(count_quarantined(_type, TestRTDBTarget) == 100)
     assert(_type in list_quarantined_types(TestRTDBTarget))
@@ -144,6 +198,7 @@ def test__load_prepared(load_cache, TestRTDBTarget):
 @pytest.mark.integration
 def test__load_cached(TestRTDBTarget):
     _type = 'xform-test'
+    assert(count_cached(_type, TestRTDBTarget) == TEST_DOC_COUNT)
     man = InputManager(TestRTDBTarget)
     _sets = man.get_inputs()
     _set: InputSet = next(_sets)

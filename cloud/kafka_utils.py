@@ -17,7 +17,7 @@
 # under the License.
 
 import io
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 
 from spavro.schema import parse
@@ -39,8 +39,11 @@ from .config import (
 )
 from . import fb_utils
 
-MAX_KAFKA_MESSAGE_SIZE = 100_000  # keep things reasonably sized, MAX is 2mb
+
 CONF = get_function_config()
+MAX_KAFKA_MESSAGE_SIZE = int(
+    CONF.get('MAX_KAFKA_MESSAGE_SIZE', 100_000))  # keep things reasonably sized, MAX is 2mb
+
 KAFKA_SECURITY = get_kafka_admin_config()
 KADMIN = get_admin_client(KAFKA_SECURITY)
 PRODUCER = get_producer(KAFKA_SECURITY)
@@ -48,7 +51,7 @@ _logger = get_logger('KAFKA')
 
 
 def publish(
-    objs: List[Any],
+    objs: List[Tuple[str, Any]],
     schema: Dict,
     _type: str,
     rtdb=None,
@@ -57,7 +60,10 @@ def publish(
     _prepare_kafka(_type)
     # have to split out _publish because it can be called on failure and
     # we only want to try to create the topic once
-    res = _publish_kafka(objs, schema, _type, rtdb, max_size)
+    res = _publish_kafka(
+        [i for (_id, i) in objs],  # strip out _ids, must be in the doc at this point
+        schema, _type, rtdb, max_size
+    )
     # make sure ALL callbacks have returned before moving on...
     PRODUCER.flush(timeout=20)
     return res
@@ -65,7 +71,7 @@ def publish(
 
 def _prepare_kafka(_type: str):
     TENANT = CONF.get('tenant')
-    topic = fb_utils.sanitize_topic(f'{TENANT}.logiak.{_type}')
+    topic = fb_utils.sanitize_topic(f'{TENANT}.fbs.{_type}')
     meta = KADMIN.list_topics(timeout=3)
     if topic in meta.topics.keys():
         return
@@ -93,7 +99,6 @@ def _publish_kafka(
         return _handle_kafka_errors(objs, schema, _type, rtdb, max_size, _callback)
     except ConnectionError as no_connection:
         _logger.error(no_connection)
-        fb_utils.cache_objects(_type, objs, rtdb)
 
 
 def make_kafka_callback(rtdb, _type):
@@ -126,7 +131,7 @@ def _send_kafka(objs: List[Any], schema, _type, max_size=MAX_KAFKA_MESSAGE_SIZE,
         raise ConnectionError('Could not connect to Kafka.')
     schema = parse(schema)
     TENANT = CONF.get('tenant')
-    topic = fb_utils.sanitize_topic(f'{TENANT}.logiak.{_type}')
+    topic = fb_utils.sanitize_topic(f'{TENANT}.fbs.{_type}')
     produce(objs, schema, topic, PRODUCER, callback=callback)
     return
 
@@ -156,7 +161,9 @@ def _handle_kafka_errors(
         )
 
     # Move bad object from cache to quarantine
-    for obj in objs:
-        fb_utils.remove_from_cache(_type, obj, rtdb)
+    objs = [(i.get('id'), i) for i in objs]
     fb_utils.quarantine(_type, objs, rtdb)
+    for _id, obj in objs:
+        fb_utils.remove_from_cache(_type, obj, rtdb)
+
     return 0

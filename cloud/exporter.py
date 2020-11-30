@@ -31,7 +31,7 @@ from . import kafka_utils
 _logger = get_logger('EXPORT')
 
 CONF = get_function_config()
-RTDB = None
+RTDB: fb_utils.RTDBTarget = None
 
 
 class ExportManager():
@@ -55,7 +55,7 @@ class ExportManager():
             app = firebase_admin.initialize_app(options={
                 'databaseURL': CONF.get('FIREBASE_URL')
             })
-            RTDB = fb_utils.RTDB(app)
+            RTDB = fb_utils.RTDBTarget('', fb_utils.RTDB(app))
 
     def run(self):
         _logger.info('starting')
@@ -66,15 +66,15 @@ class ExportManager():
         _logger.debug('Looking for work')
         read_subs: List[InputSet] = self.manager.get_inputs()
         for _input in read_subs:
-            _ct = publish(_input, self.rtdb)
-            _logger.info(f'published {_ct} of type : {_input.name}')
+            if _input.docs:
+                _ct = publish(_input, self.rtdb)
+                _logger.info(f'published {_ct} of type : {_input.name}')
+            else:
+                _logger.info(f'No new docs to export for type {_input.name}')
 
 
 # this was refactored from using multiprocessing, so no self context.
 
 def publish(_input: InputSet, rtdb=None):
     # TODO look at options in InputSet and route to Kafka or Other...
-    if _input.docs:
-        return kafka_utils.publish(_input.docs, _input.schema, _input.name, rtdb)
-    else:
-        _logger.info(f'No new docs to export for type {_input.name}')
+    return kafka_utils.publish(_input.docs, _input.schema, _input.name, rtdb)

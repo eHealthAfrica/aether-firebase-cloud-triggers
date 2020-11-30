@@ -18,13 +18,26 @@
 # specific language governing permissions and limitations
 # under the License.
 
+import json
 import pytest
+import spavro.io
+import spavro.schema
+
+from aether.python.avro import tools as avro_tools
 
 from .fixtures import *  # noqa
+from . import LOGIAK_SCHEMA, LOGIAK_ENTITY, LOG
 # from .aether_functions import *  # noqa
-from .app.fb_utils import halve_iterable, sanitize_topic
-from .app.config import get_kafka_config, kafka_admin_uses, get_kafka_admin_config
-from .app.hash import make_hash
+from .app.cloud.fb_utils import halve_iterable, sanitize_topic
+from .app.cloud import fb_move
+from .app.cloud.config import get_kafka_config, kafka_admin_uses, get_kafka_admin_config
+from .app.cloud.hash import make_hash
+from .app.cloud.schema_utils import (
+    add_id_field,
+    coersce,
+    coersce_or_fail,
+    contains_id
+)
 
 
 @pytest.mark.unit
@@ -44,6 +57,15 @@ def test__kafka_config():
 @pytest.mark.unit
 def test__sanitize_topic_name(test, expected):
     assert(sanitize_topic(test) == expected)
+
+
+@pytest.mark.unit
+def test__path_resolution():
+    resolver = fb_move._path_grabber('/{deployment_id}/data/{doc_type}/{doc_id}')
+    res = resolver('projects/covid19-logiak/databases/(default)/documents/293cfe55-d45d-4ceb-a4c0-d01623e4850b/data/patient/a7b0f5db-d2b8-4356-a33d-c0ed62238a9f')  # noqa
+    assert(res['deployment_id'] == '293cfe55-d45d-4ceb-a4c0-d01623e4850b')
+    assert(res['doc_type'] == 'patient')
+    assert(res['doc_id'] == 'a7b0f5db-d2b8-4356-a33d-c0ed62238a9f')
 
 
 @pytest.mark.unit
@@ -95,3 +117,34 @@ def test__hash():
     assert(make_hash(_type_a, doc_a) != make_hash(_type_b, doc_a))
     assert(make_hash(_type_a, doc_a) == make_hash(_type_a, doc_b))
     assert(make_hash(_type_a, doc_a) != make_hash(_type_a, doc_c))
+
+
+@pytest.mark.unit
+def test__add_id_field_to_schema():
+    doc = json.loads(LOGIAK_ENTITY)
+    _schema_dict = json.loads(LOGIAK_SCHEMA)
+    assert(contains_id(_schema_dict) is False)
+    _schema_dict = add_id_field(_schema_dict, 'uuid')
+    assert(contains_id(_schema_dict) is True)
+    _schema = spavro.schema.parse(json.dumps(_schema_dict))
+    assert(spavro.io.validate(_schema, doc) is False)
+
+
+@pytest.mark.unit
+def test__coersce_to_schema():
+    doc = json.loads(LOGIAK_ENTITY)
+    _schema_dict = json.loads(LOGIAK_SCHEMA)
+    _schema = spavro.schema.parse(LOGIAK_SCHEMA)
+    opts = {'NULL_VALUE': 'novalue', 'ID_FIELD': 'uuid'}
+    try:
+        doc = coersce_or_fail(doc, _schema, _schema_dict, opts)
+    except ValueError:
+        doc = coersce(doc, _schema_dict)
+        result = avro_tools.AvroValidator(
+            schema=_schema,
+            datum=doc
+        )
+        LOG.debug(json.dumps(doc, indent=2))
+        for error in result.errors:
+            err_msg = avro_tools.format_validation_error(error)
+            LOG.error(f'Validation error: {err_msg}')

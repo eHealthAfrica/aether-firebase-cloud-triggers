@@ -16,3 +16,4 @@ RUN pip install -q --upgrade pip && \
     pip install -q -r /test/requirements.txt
 COPY ./test/* /test/
 COPY ./*.py /test/app/
+COPY ./cloud /test/app/cloud

@@ -10,12 +10,17 @@ services:
   # Firebase Eumulator
   # -------------------------------------
 
-  emu:
+  emulator:
     image: ehealthafrica/firebase-emulator:latest
     volumes:
-      # not required, but nice because it caches downloaded emulator binaries
-      - firebase:/home/docker/.cache/firebase/emulators:rw
-      - firebase:/app/fb:rw
+      # - ./hosted.json:/app/override.json:rw
+      # - firebase:/app/fb/functions:rw
+      # - firebase:/app/fb/public:rw
+      - firebase-fct:/home/docker/.cache/firebase/emulators:rw
+      - firebase-fct:/app/fb:rw
+    environment:
+      FIREBASE_TOKEN: ${FIREBASE_TOKEN-}
+      FIREBASE_PROJECT: ${FIREBASE_PROJECT-}
     ports:
       - 5001:5001
       - 9000:9000
@@ -32,9 +37,10 @@ services:
       "/test/entrypoint.sh"
 
     environment:
-      FIRESTORE_EMULATOR_HOST: emu:8080
-      FIREBASE_DATABASE_EMULATOR_HOST: emu:9000
+      FIRESTORE_EMULATOR_HOST: emulator:8080
+      FIREBASE_DATABASE_EMULATOR_HOST: emulator:9000
       TENANT: test
+      BASE_PATH: test_project
       SYNC_PATH: _sync_queue
       KAFKA_URL: ${KAFKA_URL}
       KAFKA_SECURITY_PROTOCOL: ${KAFKA_SECURITY_PROTOCOL}
@@ -44,4 +50,9 @@ services:
 
 volumes:
   # not required, but nice because it caches downloaded emulator binaries
-  firebase:
+  firebase-fct:
+    driver: local
+    driver_opts:
+      type: volume
+      o: bind
+      device: "${PWD}/data"
