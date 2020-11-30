@@ -198,6 +198,7 @@ def test__load_prepared(load_cache, TestRTDBTarget):
 @pytest.mark.integration
 def test__load_cached(TestRTDBTarget):
     _type = 'xform-test'
+    assert(count_cached(_type, TestRTDBTarget) == TEST_DOC_COUNT)
     man = InputManager(TestRTDBTarget)
     _sets = man.get_inputs()
     _set: InputSet = next(_sets)

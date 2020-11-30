@@ -1,5 +1,5 @@
-aet.consumer==3.8.0
+aet.consumer>=3.9.1
 firebase_admin
-functions-framework==1.0.0
+functions-framework>=1.0.0
 google.cloud
 requests

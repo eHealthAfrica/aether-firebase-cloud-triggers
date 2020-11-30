@@ -40,6 +40,7 @@ services:
       FIRESTORE_EMULATOR_HOST: emulator:8080
       FIREBASE_DATABASE_EMULATOR_HOST: emulator:9000
       TENANT: test
+      BASE_PATH: test_project
       SYNC_PATH: _sync_queue
       KAFKA_URL: ${KAFKA_URL}
       KAFKA_SECURITY_PROTOCOL: ${KAFKA_SECURITY_PROTOCOL}
