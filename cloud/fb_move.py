@@ -117,6 +117,8 @@ def _make_doc_getter(source: DBType, rtdb, use_rtdb_delta=False, cfs=None):
         _path = full_path.split('/refs/')[1]
         res = rtdb.reference(_path).get()
         if res:
+            if isinstance(res, dict):
+                return res
             return res.to_dict()
         return None
 
