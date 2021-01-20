@@ -233,7 +233,7 @@ def _exhaust_consumer(consumer, expected_count, expected_topic):
 @pytest.mark.integration
 def test__publish_kafka(consumer, TestRTDBTarget):
     _type = 'xform-test'
-    _topic_name = f'{TENANT}.logiak.{_type}'
+    _topic_name = f'{TENANT}.fbs.{_type}'
     man = InputManager(TestRTDBTarget)
     _sets = man.get_inputs()
     _input: InputSet = next(_sets)
@@ -271,7 +271,7 @@ def test__publish_kafka(consumer, TestRTDBTarget):
 def test__exporter(load_cache, consumer, TestRTDBTarget):
     _type = 'xform-test-1'
     load_cache(_type, TEST_DOC_COUNT)
-    _topic_name = f'{TENANT}.logiak.{_type}'
+    _topic_name = f'{TENANT}.fbs.{_type}'
     app = exporter.ExportManager(TestRTDBTarget)
     app.run()
     consumer.subscribe([_topic_name])

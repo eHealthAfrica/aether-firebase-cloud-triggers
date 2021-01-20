@@ -130,13 +130,13 @@ def consumer():
         **{
             'auto.offset.reset': 'earliest',
             'enable.auto.commit': True,
-            # 'auto.commit.interval.ms': 2500,
+            'auto.commit.interval.ms': 2500,
             'aether_emit_flag_required': False,
             'aether_masking_schema_levels': ['false', 'true'],
             'aether_masking_schema_emit_level': 'false',
-            # 'heartbeat.interval.ms': 2500,
-            # 'session.timeout.ms': 18000,
-            # 'request.timeout.ms': 20000
+            'heartbeat.interval.ms': 2500,
+            'session.timeout.ms': 18000,
+            'request.timeout.ms': 20000
         }
     }
     _consumer = KafkaConsumer(**consumer_settings)
